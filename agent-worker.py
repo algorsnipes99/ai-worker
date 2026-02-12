@@ -1,0 +1,194 @@
+from pymongo import MongoClient
+from agents.api_agent import ApiAgent
+from agents.database_agent import DatabaseAgent
+from agents.command_prompt_agent import CommandPromptAgent
+from agents.file_manager_agent import FileManagerAgent
+from agents.summarization_agent import SummarizationAgent
+from concurrent.futures import ThreadPoolExecutor
+
+import time
+import logging
+from typing import Dict, Any, Type
+import signal
+import sys
+import threading
+
+class AgentWorker:
+    """Worker that monitors MongoDB for new messages and runs agents"""
+    
+    def __init__(self):
+        # Use same MongoDB connection as MessageService
+        # self.uri = 'mongodb://algor2190:Haloreach2199@102.130.124.233:27017'
+        self.uri = 'mongodb://admin:password123@localhost:27017'
+        self.db_name = 'testdb'
+        self.collection_name = 'messages'
+        self.api_key = 'sk-3dcb45f26a4745129f4aa6dd846c25c5'
+        
+        # Configure logging
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+        
+        # Thread pool for parallel processing
+        self.max_workers = 5  # Configurable number of parallel executions
+        self.executor = ThreadPoolExecutor(max_workers=self.max_workers)
+        self.thread_local = threading.local()  # For thread-local storage
+        
+        # For graceful shutdown
+        self.shutdown_flag = False
+        signal.signal(signal.SIGINT, self.handle_shutdown)
+        signal.signal(signal.SIGTERM, self.handle_shutdown)
+
+    def handle_shutdown(self, signum, frame):
+        """Handle shutdown signals gracefully"""
+        self.logger.info("Shutdown signal received")
+        self.shutdown_flag = True
+        
+        # Shutdown thread pool gracefully
+        self.logger.info("Shutting down thread pool (waiting for running tasks to complete)")
+        self.executor.shutdown(wait=True)
+        self.logger.info("Thread pool shutdown completed")
+
+    def run(self):
+        """Main worker loop"""
+        try:
+            client = MongoClient(self.uri)
+            db = client[self.db_name]
+            collection = db[self.collection_name]
+            
+            self.logger.info("Starting MongoDB polling")
+            poll_interval = 5  # seconds
+            
+            # Track last processed timestamp
+            last_processed = None
+            
+            while not self.shutdown_flag:
+                try:
+                    # Query for messages with run_signal and user messages
+                    query = {
+                        'run_signal': True,
+                        'messages': {
+                            '$elemMatch': {
+                                'role': 'user',
+                                'content': {'$exists': True}
+                            }
+                        }
+                    }
+
+                    
+                    documents = collection.find(query).sort('created_at', 1)
+                    
+                    for doc in documents:
+                        if self.shutdown_flag:
+                            break
+                            
+                        # Get the latest user message
+                        user_messages = [m for m in doc['messages'] if m['role'] == 'user']
+                        if user_messages:
+                            message = {
+                                'user_request': user_messages[-1]['content'],
+                                'plan_text': doc.get('plan_text', ''),
+                                'parent_message_guid': doc.get('parent_message_guid'),
+                                'parent_resume_guid': doc.get('guid'),
+                                'child_resume_guid': doc.get('child_resume_guid'),
+                                'agent_class_name': doc.get('agent_class_name'),
+                                '_id': doc.get('_id', 'unknown')  # Include _id for logging
+                            }
+                            
+                            # Remove run_signal immediately (before processing)
+                            collection.update_one(
+                                {'_id': doc['_id']},
+                                {'$unset': {'run_signal': ""}}
+                            )
+                            
+                            # Submit to thread pool for async processing
+                            self.executor.submit(self._process_document_thread, message)
+                            self.logger.info(f"Submitted message {message.get('_id')} to thread pool")
+                    
+                    time.sleep(poll_interval)
+                    
+                except Exception as e:
+                    self.logger.error(f"Error polling MongoDB: {e}")
+                    time.sleep(poll_interval)  # Wait before retrying
+                    
+        except Exception as e:
+            self.logger.error(f"Fatal error: {e}")
+            sys.exit(1)
+
+    def _get_agent_class(self, agent_class_name: str) -> Type:
+        """Map database agent_class_name to Python class"""
+        mapping = {
+            'databaseagent': DatabaseAgent,
+            'apiagent': ApiAgent,
+            'commandpromptagent': CommandPromptAgent,
+            'filemanageragent': FileManagerAgent,
+            'summarizationagent': SummarizationAgent,
+        }
+        
+        agent_class = mapping.get(agent_class_name.lower())
+        if not agent_class:
+            self.logger.warning(f"Unknown agent class: {agent_class_name}, defaulting to DatabaseAgent")
+            agent_class = DatabaseAgent
+            
+        return agent_class
+
+    def _get_thread_mongo_client(self):
+        """Get a thread-local MongoDB client"""
+        if not hasattr(self.thread_local, 'mongo_client'):
+            # Create a new MongoDB client for this thread
+            self.thread_local.mongo_client = MongoClient(self.uri)
+            self.logger.debug(f"Created new MongoDB client for thread {threading.current_thread().name}")
+        return self.thread_local.mongo_client
+
+    def _process_document_thread(self, message: Dict[str, Any]):
+        """Thread-safe document processing (runs in a separate thread)"""
+        thread_name = threading.current_thread().name
+        message_id = message.get('_id', 'unknown')
+        
+        try:
+            self.logger.info(f"Thread {thread_name} started processing message {message_id}")
+            
+            # Process the message (similar to original process_message)
+            agent_class_name = message.get('agent_class_name')
+            if not agent_class_name:
+                self.logger.warning(f"No agent_class_name specified for message {message_id}, defaulting to DatabaseAgent")
+                agent_class_name = 'databaseagent'
+                
+            agent_class = self._get_agent_class(agent_class_name)
+            self.logger.info(f"Thread {thread_name} processing message {message_id} with agent class: {agent_class.__name__}")
+            
+            # Instantiate the agent
+            agent = agent_class(
+                user_request=message['user_request'],
+                plan_text=message.get('plan_text', ""),
+                api_key=self.api_key,
+                parent_message_guid=message.get('parent_message_guid'),
+                parent_resume_guid=message.get('parent_resume_guid'),
+                child_resume_guid=message.get('child_resume_guid')
+            )
+            
+            result = agent.run(message['user_request'])
+            self.logger.info(f"Thread {thread_name} - Agent {agent_class.__name__} completed message {message_id} with result: {result}")
+            
+        except Exception as e:
+            self.logger.error(f"Thread {thread_name} - Error processing message {message_id}: {str(e)}", exc_info=True)
+        finally:
+            self.logger.info(f"Thread {thread_name} finished processing message {message_id}")
+    
+    def process_message(self, message: Dict[str, Any]):
+        """
+        Legacy synchronous method (for backward compatibility)
+        This is now just a wrapper around _process_document_thread
+        """
+        self._process_document_thread(message)
+
+    def get_last_processed_id(self):
+        """Get last processed message ID for resumption (optional)"""
+        # Could implement persistent storage of last processed ID
+        return None
+
+if __name__ == '__main__':
+    worker = AgentWorker()
+    worker.run()
