@@ -120,8 +120,8 @@ class DelegateToAgentFunction(Function):
             planning_prompt_path = config["planning_prompt"]
             agent_class = config["agent_class"]
             
-            # Use a hardcoded API key (in production, this should come from environment)
-            api_key = 'sk-3dcb45f26a4745129f4aa6dd846c25c5'
+            # Use environment variable for API key with fallback
+            api_key = os.getenv('DEEPSEEK_API_KEY')
             
             # If resuming, skip planning and go straight to execution
             plan_text = None

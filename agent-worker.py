@@ -6,6 +6,7 @@ from agents.file_manager_agent import FileManagerAgent
 from agents.summarization_agent import SummarizationAgent
 from concurrent.futures import ThreadPoolExecutor
 
+import os
 import time
 import logging
 from typing import Dict, Any, Type
@@ -13,16 +14,19 @@ import signal
 import sys
 import threading
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 class AgentWorker:
     """Worker that monitors MongoDB for new messages and runs agents"""
     
     def __init__(self):
-        # Use same MongoDB connection as MessageService
-        # self.uri = 'mongodb://algor2190:Haloreach2199@102.130.124.233:27017'
-        self.uri = 'mongodb://admin:password123@localhost:27017'
-        self.db_name = 'testdb'
-        self.collection_name = 'messages'
-        self.api_key = 'sk-3dcb45f26a4745129f4aa6dd846c25c5'
+        # Use environment variables for configuration
+        self.uri = os.getenv('MONGODB_URI')
+        self.db_name = os.getenv('MONGODB_DB_NAME', 'test')
+        self.collection_name = os.getenv('MONGODB_COLLECTION_NAME', 'messages')
+        self.api_key = os.getenv('DEEPSEEK_API_KEY')
         
         # Configure logging
         logging.basicConfig(

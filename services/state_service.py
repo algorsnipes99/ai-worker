@@ -2,14 +2,19 @@ from typing import Dict, Any, Optional
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 from datetime import datetime
+import os
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
 
 class StateService:
     """Service for managing agent execution states in MongoDB"""
     
     def __init__(self, messages_dir: str):
-        self.uri = 'mongodb://admin:password123@localhost:27017/testdb?authSource=admin'
-        self.db_name = 'test'
-        self.collection_name = 'states'
+        self.uri = os.getenv('MONGODB_URI')
+        self.db_name = os.getenv('MONGODB_DB_NAME', 'test')
+        self.collection_name = os.getenv('MONGODB_STATE_COLLECTION', 'states')
         
         try:
             self.client = MongoClient(self.uri)

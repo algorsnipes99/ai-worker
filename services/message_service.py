@@ -4,13 +4,17 @@ from pymongo.errors import ConnectionFailure
 import os
 import json
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 class MessageService:
     """Service for saving and loading agent messages to MongoDB"""
     
     def __init__(self, messages_dir: str):
-        self.uri = 'mongodb://admin:password123@localhost:27017'
-        self.db_name = 'testdb'
-        self.collection_name = 'messages'
+        self.uri = os.getenv('MONGODB_URI')
+        self.db_name = os.getenv('MONGODB_DB_NAME', 'test')
+        self.collection_name = os.getenv('MONGODB_COLLECTION_NAME', 'messages')
         
         try:
             self.client = MongoClient(self.uri)
