@@ -4,6 +4,7 @@ from agents.database_agent import DatabaseAgent
 from agents.command_prompt_agent import CommandPromptAgent
 from agents.file_manager_agent import FileManagerAgent
 from agents.summarization_agent import SummarizationAgent
+from agents.codebase_expert_agent import CodebaseExpertAgent
 from concurrent.futures import ThreadPoolExecutor
 
 import os
@@ -129,6 +130,7 @@ class AgentWorker:
             'commandpromptagent': CommandPromptAgent,
             'filemanageragent': FileManagerAgent,
             'summarizationagent': SummarizationAgent,
+            'codebaseexpertagent': CodebaseExpertAgent,
         }
         
         agent_class = mapping.get(agent_class_name.lower())

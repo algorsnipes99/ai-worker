@@ -1,3 +1,4 @@
+import os
 from typing import Dict
 from functions.function_registry import FunctionRegistry
 from functions.file_read_function import FileReadFunction
@@ -6,6 +7,7 @@ from functions.command_function import CommandFunction
 from functions.folder_info_function import FolderInfoFunction
 from functions.website_lookup_function import WebsiteLookupFunction
 from functions.website_lookup_rendered_function import WebsiteLookupRenderedFunction
+from functions.codebase_query_function import CodebaseQueryFunction
 from .base_agent import BaseAgent
 
 class FileManagerAgent(BaseAgent):
@@ -25,7 +27,14 @@ class FileManagerAgent(BaseAgent):
         registry.register(FileReadFunction())
         registry.register(FileEditFunction())
         registry.register(CommandFunction())
-        registry.register(FolderInfoFunction())
+        # registry.register(FolderInfoFunction())
         registry.register(WebsiteLookupFunction())
         registry.register(WebsiteLookupRenderedFunction())
+        repo_paths = self._get_repo_paths()
+        # if repo_paths:
+        #     registry.register(CodebaseQueryFunction(repo_paths=repo_paths))
         return registry
+
+    def _get_repo_paths(self):
+        raw = os.getenv('CODEBASE_REPO_PATHS', os.getenv('CODEBASE_REPO_PATH', ''))
+        return [p.strip() for p in raw.split(',') if p.strip()]

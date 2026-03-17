@@ -133,6 +133,12 @@ class BaseAgent(ABC):
         except Exception as e:
             print(f"Warning: Could not update GUID tracking in PermissionManager: {e}")
     
+    def _check_pause_signal(self) -> bool:
+        """Check MongoDB for a pause_signal on this agent's document"""
+        if not self.message_guid:
+            return False
+        return self.message_service.check_and_clear_pause_signal(self.message_guid)
+
     def removeChildAgentState(self) -> None:
         """Remove child agent GUID from PermissionManager when child agent completes"""
         try:
@@ -368,11 +374,18 @@ class BaseAgent(ABC):
             self.execution_state["status"] = self.STATE_INIT
             self.execution_state["total_messages"] = len(messages)
             self._save_messages(messages, self.message_guid)
-            
+            self.message_service.update_status(self.message_guid, "active")
+
             # Track agent GUID in PermissionManager for parent-child relationship tracking
             self.setAgentStatesInPermissions()
         
         while True:
+            # Check for pause signal before each LLM call
+            if self._check_pause_signal():
+                print(f"⏸️  Pause signal received for agent {self.message_guid}. Halting execution.")
+                self.message_service.update_status(self.message_guid, "paused")
+                return {"paused": True, "message_guid": self.message_guid}
+
             # Call LLM API
             response = self.system._call_deepseek(
                 messages=messages,
@@ -437,6 +450,7 @@ class BaseAgent(ABC):
                 # Final response with no tool calls
                 self.execution_state["status"] = self.STATE_COMPLETED
                 self._save_messages(messages, self.message_guid)
+                self.message_service.update_status(self.message_guid, "complete")
                 self.removeChildAgentState()
                 response["message_guid"] = self.message_guid
                 return response

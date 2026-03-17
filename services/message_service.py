@@ -70,6 +70,22 @@ class MessageService:
             
         return doc.get('messages', []) if doc else None
 
+    def update_status(self, guid: str, status: str) -> None:
+        """Update the status field on the agent's document"""
+        self.collection.update_one(
+            {'guid': guid},
+            {'$set': {'status': status}},
+            upsert=True
+        )
+
+    def check_and_clear_pause_signal(self, guid: str) -> bool:
+        """Check if a pause_signal exists for this guid, clear it if so, return True if paused"""
+        result = self.collection.find_one_and_update(
+            {'guid': guid, 'pause_signal': True},
+            {'$unset': {'pause_signal': ""}},
+        )
+        return result is not None
+
     def _get_timestamp(self) -> str:
         """Get current timestamp in ISO format"""
         from datetime import datetime
