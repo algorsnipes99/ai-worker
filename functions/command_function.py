@@ -8,7 +8,7 @@ class CommandFunction(Function):
     def __init__(self):
         super().__init__(
             name="executeCommand",
-            description="Executes a system command and returns the output",
+            description="Executes a system command and returns the output. Do NOT use to search or find files/code in project repositories — use codebaseQuery for that.",
             parameters={
                 "command": {
                     "type": "string", 

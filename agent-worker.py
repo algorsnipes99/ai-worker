@@ -1,4 +1,7 @@
 from pymongo import MongoClient
+from conversation_compressor.tool_call_remover import ToolCallRemover
+from conversation_compressor.message_summarizer import MessageSummarizer
+from conversation_compressor.combined_compressor import CombinedCompressor
 from agents.api_agent import ApiAgent
 from agents.database_agent import DatabaseAgent
 from agents.command_prompt_agent import CommandPromptAgent
@@ -112,8 +115,23 @@ class AgentWorker:
                             self.executor.submit(self._process_document_thread, message)
                             self.logger.info(f"Submitted message {message.get('_id')} to thread pool")
                     
+                    # Check for conversations pending compression
+                    compress_docs = collection.find({'compress_conversation': True})
+                    for doc in compress_docs:
+                        if self.shutdown_flag:
+                            break
+                        strategy = doc.get('compression_strategy', 'remove_tool_calls')
+                        guid = doc.get('guid')
+                        # Clear the flags immediately so it isn't picked up again
+                        collection.update_one(
+                            {'_id': doc['_id']},
+                            {'$unset': {'compress_conversation': '', 'compression_strategy': ''}}
+                        )
+                        self.executor.submit(self._process_compression_thread, guid, strategy)
+                        self.logger.info(f"Submitted compression for {guid} with strategy: {strategy}")
+
                     time.sleep(poll_interval)
-                    
+
                 except Exception as e:
                     self.logger.error(f"Error polling MongoDB: {e}")
                     time.sleep(poll_interval)  # Wait before retrying
@@ -183,6 +201,23 @@ class AgentWorker:
         finally:
             self.logger.info(f"Thread {thread_name} finished processing message {message_id}")
     
+    def _process_compression_thread(self, guid: str, strategy: str):
+        """Run the appropriate compressor for a conversation in a thread"""
+        thread_name = threading.current_thread().name
+        self.logger.info(f"Thread {thread_name} compressing {guid} with strategy: {strategy}")
+        try:
+            compressor_map = {
+                'remove_tool_calls': ToolCallRemover,
+                'summarize_messages': MessageSummarizer,
+                'both': CombinedCompressor,
+            }
+            compressor_class = compressor_map.get(strategy, ToolCallRemover)
+            compressor = compressor_class()
+            compressor.run(guid)
+            self.logger.info(f"Thread {thread_name} finished compressing {guid}")
+        except Exception as e:
+            self.logger.error(f"Thread {thread_name} - Error compressing {guid}: {e}", exc_info=True)
+
     def process_message(self, message: Dict[str, Any]):
         """
         Legacy synchronous method (for backward compatibility)
