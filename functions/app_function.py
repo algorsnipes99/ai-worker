@@ -5,6 +5,8 @@ import os
 
 class AppFunction(Function):
     """Open specified Windows application"""
+
+    # Register the openApplication tool with its parameter schema.
     def __init__(self):
         super().__init__(
             name="openApplication",
@@ -17,8 +19,11 @@ class AppFunction(Function):
             }
         )
 
+    # Launch a Windows application by name, falling back to the 'start' command if direct
+    # Popen fails.
+    # @param args: Dict with 'appName' (required).
+    # @returns: Dict with 'status' and 'message'.
     def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute the application opening"""
         try:
             # Try direct execution first
             try:

@@ -10,6 +10,9 @@ class ToolCallRemover(BaseCompressor):
       - messages that have a 'tool_calls' field (assistant invoking tools)
     """
 
+    # Strip all tool-related messages, keeping only user, system, and plain assistant messages.
+    # @param messages: Full conversation message list.
+    # @returns: Filtered list with role='tool' and tool_calls messages removed.
     def compress(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         return [
             msg for msg in messages

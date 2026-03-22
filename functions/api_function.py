@@ -7,6 +7,8 @@ from requests.adapters import HTTPAdapter
 
 class ApiFunction(Function):
     """Make generic API calls (GET/POST) to any endpoint"""
+
+    # Register the makeApiCall tool with its parameter schema.
     def __init__(self):
         super().__init__(
             name="makeApiCall",
@@ -50,8 +52,12 @@ class ApiFunction(Function):
             }
         )
 
+    # Execute the HTTP request and return status, response body, and headers.
+    # In agent_mode, SSL verification is disabled and retries are configured.
+    # @param args: Dict with 'url', 'method', optional 'headers', 'query_params', 'payload',
+    #              'auth_token', and 'agent_mode'.
+    # @returns: Dict with 'status', 'status_code', 'response', 'headers', or 'error' on failure.
     def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute the API call"""
         try:
             headers = args.get("headers", {})
             if args.get("auth_token"):

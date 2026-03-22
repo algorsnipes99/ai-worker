@@ -12,6 +12,7 @@ class MessageSummarizer(BaseCompressor):
     Tool call/response messages are left structurally intact but their content is shortened.
     """
 
+    # Initialize with a DeepSeek-compatible OpenAI client using DEEPSEEK_API_KEY.
     def __init__(self):
         super().__init__()
         self.api_key = os.getenv('DEEPSEEK_API_KEY')
@@ -20,14 +21,20 @@ class MessageSummarizer(BaseCompressor):
             base_url='https://api.deepseek.com'
         )
 
+    # Shorten every message in the list, preserving structure but compressing content.
+    # @param messages: Full conversation message list.
+    # @returns: List of messages with content replaced by shortened versions.
     def compress(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         compressed = []
         for msg in messages:
             compressed.append(self._summarize_message(msg))
         return compressed
 
+    # Return a copy of the message with its text content and tool call arguments shortened.
+    # Structural fields (role, tool_call_id, etc.) are preserved unchanged.
+    # @param message: Single message dict to summarize.
+    # @returns: Copy of the message with compressed content.
     def _summarize_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Return a copy of the message with shortened content"""
         msg = dict(message)
 
         # Summarize plain text content
@@ -51,8 +58,11 @@ class MessageSummarizer(BaseCompressor):
 
         return msg
 
+    # Call the DeepSeek LLM to shorten a piece of text as aggressively as possible
+    # while preserving key facts. Falls back to the original text on API failure.
+    # @param text: Text string to shorten.
+    # @returns: Shortened text string, or the original if the API call fails.
     def _shorten(self, text: str) -> str:
-        """Ask the LLM to shorten a piece of text as much as possible"""
         try:
             response = self.client.chat.completions.create(
                 model='deepseek-chat',

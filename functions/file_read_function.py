@@ -4,7 +4,8 @@ from functions.function import Function
 
 class FileReadFunction(Function):
     """Reads content from a file"""
-    
+
+    # Register the readFile tool with its parameter schema.
     def __init__(self):
         super().__init__(
             name="readFile",
@@ -26,7 +27,10 @@ class FileReadFunction(Function):
                 }
             }
         )
-    
+
+    # Read and return file content, optionally filtering to specific line numbers.
+    # @param args: Dict with 'path' (required), 'encoding' (default utf-8), 'lines' (optional 1-based list).
+    # @returns: Dict with 'content' string, or 'error' if file not found or read fails.
     def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
         path = args["path"]
         encoding = args.get("encoding", "utf-8")
@@ -35,7 +39,7 @@ class FileReadFunction(Function):
 
         if not os.path.exists(path):
             return {"error": f"File not found: {path}"}
-        
+
         try:
             with open(path, 'r', encoding=encoding) as f:
                 if lines:

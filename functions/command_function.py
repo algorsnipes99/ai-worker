@@ -4,14 +4,15 @@ from functions.function import Function
 
 class CommandFunction(Function):
     """Executes system commands"""
-    
+
+    # Register the executeCommand tool with its parameter schema.
     def __init__(self):
         super().__init__(
             name="executeCommand",
             description="Executes a system command and returns the output. Do NOT use to search or find files/code in project repositories — use codebaseQuery for that.",
             parameters={
                 "command": {
-                    "type": "string", 
+                    "type": "string",
                     "description": "The command to execute"
                 },
                 "timeout": {
@@ -27,6 +28,9 @@ class CommandFunction(Function):
             }
         )
 
+    # Run the shell command via subprocess and return its exit code, stdout, and stderr.
+    # @param args: Dict with 'command' (required), 'timeout' (default 30s), 'working_dir' (optional).
+    # @returns: Dict with 'exit_code', 'stdout', 'stderr', or 'error' on timeout/exception.
     def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
         command = args["command"]
         timeout = args.get("timeout", 30)
@@ -42,7 +46,7 @@ class CommandFunction(Function):
                 capture_output=True,
                 text=True
             )
-            
+
             return {
                 "exit_code": result.returncode,
                 "stdout": result.stdout,

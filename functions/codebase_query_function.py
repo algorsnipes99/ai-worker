@@ -11,6 +11,10 @@ _RAG_PATH = os.getenv(
 if _RAG_PATH not in sys.path:
     sys.path.insert(0, _RAG_PATH)
 
+# Lazily import the CodeRepositoryRAG class from the external RAG project.
+# Using importlib to defer the import until first use, avoiding startup errors
+# if the RAG project path is not yet configured.
+# @returns: The CodeRepositoryRAG class.
 def _load_rag_class():
     import importlib
     mod = importlib.import_module('main')
@@ -20,11 +24,11 @@ def _load_rag_class():
 class CodebaseQueryFunction(Function):
     """Allows agents to query one or more codebases using the RAG system"""
 
+    # Initialize with a list of repository paths to index.
+    # Builds the tool description dynamically from the repo names.
+    # RAG instances are created lazily on first query per repo.
+    # @param repo_paths: List of absolute paths to repositories to index and query.
     def __init__(self, repo_paths: List[str]):
-        """
-        Args:
-            repo_paths: List of repository paths to index and query.
-        """
         self.repo_paths = repo_paths
         # One RAG instance per repo, lazily initialized: {path: <CodeRepositoryRAG>}
         self._rags: Dict[str, Any] = {}
@@ -53,8 +57,10 @@ class CodebaseQueryFunction(Function):
             }
         )
 
+    # Return the RAG instance for the given repo path, building and indexing it on first access.
+    # @param repo_path: Absolute path to the repository to initialize.
+    # @returns: An initialized CodeRepositoryRAG instance ready to answer questions.
     def _get_rag(self, repo_path: str):
-        """Lazy initialization — builds or loads the index for a single repo."""
         if repo_path not in self._rags:
             print(f"Initializing RAG index for: {repo_path}")
             CodeRepositoryRAG = _load_rag_class()
@@ -64,6 +70,10 @@ class CodebaseQueryFunction(Function):
             print(f"RAG index ready for: {repo_path}")
         return self._rags[repo_path]
 
+    # Query one or all indexed repositories and aggregate their answers and source references.
+    # @param args: Dict with 'question' (required) and optional 'repo' filter (repo name string).
+    # @returns: Dict with 'answer', 'sources', 'num_sources', 'question', 'repos_queried',
+    #           'errors', 'status', or 'error' if all repos failed.
     def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
         question = args["question"]
         repo_filter = args.get("repo", "").strip().lower()

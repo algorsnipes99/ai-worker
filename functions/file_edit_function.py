@@ -10,6 +10,7 @@ from datetime import datetime
 class FileEditFunction(Function):
     """Edits content of a file"""
 
+    # Register the editFile tool with its full parameter schema.
     def __init__(self):
         super().__init__(
             name="editFile",
@@ -81,15 +82,20 @@ class FileEditFunction(Function):
             }
         )
 
+    # Try to parse the given string as JSON.
+    # @param content: String to parse.
+    # @returns: Parsed object, or None if not valid JSON.
     def _try_parse_json(self, content: str) -> Optional[Dict[str, Any]]:
-        """Attempt to parse content as JSON, return None if not valid JSON"""
         try:
             return json.loads(content)
         except ValueError:
             return None
 
+    # Write text to a file atomically: write to a temp file in the same directory,
+    # then os.replace() to swap it in. Cleans up the temp file on failure.
+    # @param path: Destination file path.
+    # @param content: Text content to write (UTF-8, Unix line endings).
     def _atomic_write_text(self, path: str, content: str) -> None:
-        """Atomically write text to a file (write temp, then os.replace)."""
         directory = os.path.dirname(path) or "."
         os.makedirs(directory, exist_ok=True)
 
@@ -107,6 +113,10 @@ class FileEditFunction(Function):
                 pass
             raise
 
+    # Validate parameters, optionally format JSON content, create or modify the file,
+    # manage backups, and return a result dict. Rolls back from backup on failure.
+    # @param args: Dict containing path, content, mode, and all optional flags.
+    # @returns: Dict with 'status' and 'path', plus optional backup/rollback info, or 'error'.
     def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
         # Parameter validation
         path = args.get("path")
@@ -231,6 +241,10 @@ class FileEditFunction(Function):
                     }
             return {"error": str(e)}
 
+    # Create the file and any missing parent directories, then write content atomically.
+    # @param path: File path to create.
+    # @param content: Text content to write.
+    # @returns: Dict with 'status': 'created' and 'path'.
     def _create_file(self, path: str, content: str) -> Dict[str, Any]:
         dirname = os.path.dirname(path)
         if dirname:
@@ -239,10 +253,20 @@ class FileEditFunction(Function):
         self._atomic_write_text(path, content)
         return {"status": "created", "path": path}
 
+    # Overwrite the file content atomically.
+    # @param path: File path to overwrite.
+    # @param content: New text content.
+    # @returns: Dict with 'status': 'overwritten' and 'path'.
     def _overwrite_file(self, path: str, content: str) -> Dict[str, Any]:
         self._atomic_write_text(path, content)
         return {"status": "overwritten", "path": path}
 
+    # Append content to the file, optionally ensuring a newline separator and trailing newline.
+    # @param path: File path to append to.
+    # @param content: Text to append.
+    # @param ensure_newline_separation: Prepend a newline if file doesn't end with one.
+    # @param ensure_trailing_newline: Ensure the file ends with a newline after appending.
+    # @returns: Dict with 'status': 'appended' and 'path'.
     def _append_file(
         self,
         path: str,
@@ -283,6 +307,13 @@ class FileEditFunction(Function):
 
         return {"status": "appended", "path": path}
 
+    # Insert content at the given 1-based line number, shifting existing lines down.
+    # Writes the resulting file atomically.
+    # @param path: File path to insert into.
+    # @param content: Text to insert (may be multi-line).
+    # @param line: 1-based line number at which to insert.
+    # @param ensure_trailing_newline: Ensure the final file ends with a newline.
+    # @returns: Dict with 'status': 'inserted', 'path', and 'line', or 'error' for invalid line.
     def _insert_file(
         self,
         path: str,
@@ -317,6 +348,9 @@ class FileEditFunction(Function):
 
         return {"status": "inserted", "path": path, "line": line}
 
+    # Copy the file to a timestamped backup in a 'backups/' subdirectory beside it.
+    # @param path: File path to back up.
+    # @returns: The backup file path string.
     def _create_backup(self, path: str) -> str:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_dir = os.path.join(os.path.dirname(path) or ".", "backups")
@@ -326,8 +360,11 @@ class FileEditFunction(Function):
         shutil.copy2(path, backup_path)
         return backup_path
 
+    # Delete old backups for this file, keeping only the most recent keep_last entries.
+    # Backups are identified by the '{filename}.bak_YYYYMMDD_HHMMSS' naming pattern.
+    # @param path: Original file path (used to locate and name-match backups).
+    # @param keep_last: Maximum number of backups to retain.
     def _enforce_backup_retention(self, path: str, keep_last: int) -> None:
-        """Keep only the most recent N backups for this file."""
         backup_dir = os.path.join(os.path.dirname(path) or ".", "backups")
         if not os.path.isdir(backup_dir):
             return

@@ -11,6 +11,7 @@ from functions.function import Function
 class WebsiteLookupRenderedFunction(Function):
     """Renders a webpage (incl. JS) and returns visible text (token-friendly)."""
 
+    # Register the lookupWebsiteRendered tool with its parameter schema.
     def __init__(self):
         super().__init__(
             name="lookupWebsiteRendered",
@@ -40,8 +41,11 @@ class WebsiteLookupRenderedFunction(Function):
             }
         )
 
+    # Resolve the hostname and check whether any of its IPs are private/local/reserved.
+    # Fails closed (returns True) if DNS resolution fails, to avoid SSRF.
+    # @param hostname: Hostname string to resolve.
+    # @returns: True if the host is considered private/unsafe, False otherwise.
     def _is_private_host(self, hostname: str) -> bool:
-        """Resolve hostname and check if it points to private/local/reserved IP space."""
         try:
             infos = socket.getaddrinfo(hostname, None)
             for info in infos:
@@ -60,12 +64,21 @@ class WebsiteLookupRenderedFunction(Function):
             # fail-closed when protection is on
             return True
 
+    # Collapse runs of whitespace and multiple blank lines in extracted page text.
+    # @param text: Raw innerText string from the browser.
+    # @returns: Normalized text with consistent spacing.
     def _normalize_text(self, text: str) -> str:
         text = text.replace("\r", "\n")
         text = re.sub(r"[ \t\f\v]+", " ", text)
         text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
         return text.strip()
 
+    # Launch a headless Chromium browser, navigate to the URL, wait for optional JS rendering,
+    # extract visible text via document.body.innerText, and return it with metadata.
+    # @param args: Dict with 'url', optional 'timeout_seconds', 'max_chars', 'wait_ms',
+    #              'protect_private_network'.
+    # @returns: Dict with 'status_code', 'ok', 'final_url', 'title', 'truncated_chars',
+    #           'text', or 'error'.
     def execute(self, args: Dict[str, Any]) -> Dict[str, Any]:
         url = args.get("url")
         if not url or not isinstance(url, str):

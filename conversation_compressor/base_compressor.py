@@ -10,6 +10,7 @@ load_dotenv()
 class BaseCompressor(ABC):
     """Base class for all conversation compression strategies"""
 
+    # Connect to MongoDB using env vars so subclasses can load and save conversations.
     def __init__(self):
         uri = os.getenv('MONGODB_URI')
         db_name = os.getenv('MONGODB_DB_NAME', 'test')
@@ -17,8 +18,10 @@ class BaseCompressor(ABC):
         self.client = MongoClient(uri)
         self.collection = self.client[db_name][collection_name]
 
+    # Load the conversation for the given GUID, compress it, save it back, and clear flags.
+    # @param guid: The conversation GUID to compress.
+    # @raises ValueError: If no document with the given GUID exists.
     def run(self, guid: str):
-        """Load, compress, and save the conversation, then clear flags"""
         doc = self.collection.find_one({'guid': guid})
         if not doc:
             raise ValueError(f"Conversation {guid} not found")
@@ -33,7 +36,10 @@ class BaseCompressor(ABC):
             }
         )
 
+    # Apply the compression strategy to a message list and return the result.
+    # Must be implemented by each concrete compressor subclass.
+    # @param messages: Full list of conversation message dicts.
+    # @returns: Compressed list of message dicts.
     @abstractmethod
     def compress(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Return a compressed version of the messages list"""
         pass
