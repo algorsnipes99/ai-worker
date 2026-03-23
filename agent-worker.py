@@ -9,6 +9,8 @@ from agents.file_manager_agent import FileManagerAgent
 from agents.summarization_agent import SummarizationAgent
 from agents.codebase_expert_agent import CodebaseExpertAgent
 from concurrent.futures import ThreadPoolExecutor
+from utils.machine_info import get_machine_id
+from services.machine_service import MachineService
 
 import os
 import time
@@ -32,6 +34,9 @@ class AgentWorker:
         self.db_name = os.getenv('MONGODB_DB_NAME', 'test')
         self.collection_name = os.getenv('MONGODB_COLLECTION_NAME', 'messages')
         self.api_key = os.getenv('DEEPSEEK_API_KEY')
+        self.machine_id = get_machine_id()
+        self.machine_service = MachineService()
+        self.machine_service.register()
 
         # Configure logging
         logging.basicConfig(
@@ -62,6 +67,10 @@ class AgentWorker:
         self.executor.shutdown(wait=True)
         self.logger.info("Thread pool shutdown completed")
 
+        # Mark machine as offline
+        self.machine_service.deregister()
+        self.logger.info("Machine marked offline")
+
     # Main polling loop: connect to MongoDB, watch for run_signal and compress_conversation docs,
     # and dispatch each to a thread pool worker. Runs until shutdown_flag is set.
     def run(self):
@@ -78,7 +87,8 @@ class AgentWorker:
 
             while not self.shutdown_flag:
                 try:
-                    # Query for messages with run_signal and user messages
+                    # Query for messages with run_signal and user messages,
+                    # only picking up tasks with no target or matching this machine
                     query = {
                         'run_signal': True,
                         'messages': {
@@ -86,7 +96,12 @@ class AgentWorker:
                                 'role': 'user',
                                 'content': {'$exists': True}
                             }
-                        }
+                        },
+                        '$or': [
+                            {'target_machine_id': {'$exists': False}},
+                            {'target_machine_id': None},
+                            {'target_machine_id': self.machine_id}
+                        ]
                     }
 
 
