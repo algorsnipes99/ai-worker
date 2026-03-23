@@ -3,6 +3,7 @@ from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure
 import os
 import json
+from utils.machine_info import get_machine_id, get_machine_name
 
 # Load environment variables from .env file
 from dotenv import load_dotenv
@@ -40,6 +41,8 @@ class MessageService:
             'agent_class_name': agent_class_name.lower(),
             'messages': messages,
             'parent_message_guid': parent_message_guid,
+            'machine_id': get_machine_id(),
+            'machine_name': get_machine_name(),
             'created_at': self._get_timestamp()
         }
         print("befoire save")
