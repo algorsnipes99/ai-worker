@@ -2,10 +2,11 @@
 
 ## Overview
 
-Three services manage persistence and access control. All read/write MongoDB or local JSON.
+Four services manage persistence and access control.
 
 ```
 MessageService    — conversation history (MongoDB: messages collection)
+MachineService    — machine online/offline status (MongoDB: machines collection)
 StateService      — execution state snapshots (MongoDB: states collection)
 PermissionManager — tool approval state (local: active_permissions.json)
 ```
@@ -32,9 +33,14 @@ PermissionManager — tool approval state (local: active_permissions.json)
   "parent_message_guid": null,
   "status": "active | complete | paused",
   "run_signal": false,
-  "pause_signal": false
+  "pause_signal": false,
+  "machine_id": "<OS/registry machine GUID>",
+  "machine_name": "<hostname>",
+  "target_machine_id": "<machine_id to route this task to, or null for any>"
 }
 ```
+
+`machine_id` and `machine_name` are written by `save_messages()` on every call, reflecting the machine that last processed the conversation. `target_machine_id` is set at conversation creation by the UI and used by `agent-worker.py` to filter task pickup.
 
 **Key methods**:
 - `save_messages(guid, messages)` — upsert by guid
@@ -43,6 +49,37 @@ PermissionManager — tool approval state (local: active_permissions.json)
 - `check_and_clear_pause_signal(guid) → bool` — atomically read + clear pause flag
 
 **Fallback loading strategy**: If exact GUID match fails, tries finding doc where the GUID appears within stored message content (for child agent resumption). This handles cases where child agent GUID is embedded in parent messages.
+
+---
+
+## MachineService (`services/machine_service.py`)
+
+**Responsibility**: Register this machine as online when the worker starts and offline when it shuts down.
+
+**MongoDB collection**: `MONGODB_MACHINES_COLLECTION` env var (default: `machines`)
+
+**Document shape**:
+```json
+{
+  "machine_id": "<OS/registry machine GUID>",
+  "machine_name": "<hostname>",
+  "user_guid": "m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2",
+  "status": "online | offline",
+  "last_seen": "2024-01-01T00:01:00"
+}
+```
+
+`machine_id` is unique. Documents are upserted — one record per physical machine.
+
+**Key methods**:
+- `register()` — upsert with `status='online'`, update `last_seen`
+- `deregister()` — set `status='offline'`, update `last_seen`
+
+**When called**:
+- `register()` is called in `AgentWorker.__init__()` immediately after the machine ID is resolved
+- `deregister()` is called in `AgentWorker.handle_shutdown()` after the thread pool drains
+
+**Note**: `user_guid` is currently hardcoded to `m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2`. To support multi-user deployments, move this to an env var.
 
 ---
 

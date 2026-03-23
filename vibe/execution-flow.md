@@ -185,11 +185,32 @@ delegateToAgent.execute():
 
 ---
 
+## Machine Registration Flow
+
+On worker startup (`AgentWorker.__init__`):
+```
+get_machine_id()  → reads Windows registry (HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid)
+                    or /etc/machine-id on Linux
+get_machine_name() → socket.gethostname()
+MachineService.register()
+  → upsert machines collection: { machine_id, machine_name, user_guid, status:'online', last_seen }
+```
+
+On worker shutdown (`AgentWorker.handle_shutdown`):
+```
+thread pool drains (wait=True)
+MachineService.deregister()
+  → update machines collection: { status:'offline', last_seen }
+```
+
+---
+
 ## Data Storage Summary
 
 | Data | Where | Key |
 |------|-------|-----|
 | Conversation messages | MongoDB `messages` collection | `guid` |
+| Machine online/offline status | MongoDB `machines` collection | `machine_id` |
 | Execution state | MongoDB `states` collection | `guid` |
 | Tool permissions | `active_permissions.json` | tool name |
 | Agent lineage (parent/child GUIDs) | `active_permissions.json` | fixed keys |

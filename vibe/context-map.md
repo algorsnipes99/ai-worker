@@ -13,7 +13,7 @@
 ## File → Purpose (one-line)
 
 ```
-agent-worker.py                          Main loop: MongoDB poll → thread dispatch
+agent-worker.py                          Main loop: MongoDB poll → thread dispatch; machine registration on start/stop
 agents/base_agent.py                     Stateful agent base: LLM loop, resumption, state machine
 agents/database_agent.py                 SQL operations (MySQL/Postgres/SQLite/MSSQL)
 agents/file_manager_agent.py             File read/write/edit + commands + codebase search
@@ -29,8 +29,10 @@ functions/file_edit_function.py          Atomic file edit with backup
 functions/command_function.py            Shell command runner (subprocess)
 functions/sql_query.py                   SQL SELECT/INSERT/UPDATE/DELETE
 functions/codebase_query_function.py     Delegates to Code-Repository-RAG for code search
-services/message_service.py             Save/load conversation history in MongoDB
+services/message_service.py             Save/load conversation history in MongoDB; stamps machine_id/machine_name
+services/machine_service.py             Upsert machine record online/offline in machines collection
 services/state_service.py               Save/load execution state snapshots in MongoDB
+utils/machine_info.py                   get_machine_id() (registry/OS) + get_machine_name() (hostname)
 utils/permission_manager.py             active_permissions.json read/write; gating logic
 exceptions/tool_permission_exception.py  Raised when tool needs human approval
 conversation_compressor/                 Three strategies: remove tools, summarize, combined
@@ -40,7 +42,7 @@ prompts/*.txt                            System prompts per agent type
 
 ---
 
-## MongoDB Document Shape
+## MongoDB Document Shapes
 
 **Task trigger (messages collection)**:
 ```json
@@ -52,7 +54,21 @@ prompts/*.txt                            System prompts per agent type
   "agent_class_name": "FileManagerAgent",
   "parent_message_guid": null,
   "messages": [],
-  "status": "active"
+  "status": "active",
+  "machine_id": "<set by worker after processing>",
+  "machine_name": "<set by worker after processing>",
+  "target_machine_id": "<null = any machine, or specific machine_id>"
+}
+```
+
+**Machine record (machines collection)**:
+```json
+{
+  "machine_id": "<OS/registry machine GUID>",
+  "machine_name": "<hostname>",
+  "user_guid": "m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2",
+  "status": "online | offline",
+  "last_seen": "<ISO timestamp>"
 }
 ```
 
@@ -117,6 +133,8 @@ Permission state lives in `active_permissions.json`. External interface must set
 | Add new agent system prompt | `prompts/` + wire in agent's `system_prompt` property |
 | Understand MongoDB schema | `services/message_service.py` + `services/state_service.py` |
 | Multi-agent delegation | `functions/delegate_to_agent_function.py` |
+| Machine registration / status | `services/machine_service.py` + `agent-worker.py` `__init__`/`handle_shutdown` |
+| Change machine routing logic | `agent-worker.py` poll query (`$or` on `target_machine_id`) |
 
 ---
 
@@ -129,3 +147,6 @@ Permission state lives in `active_permissions.json`. External interface must set
 5. **Thread-local MongoDB clients** — each thread creates its own client; connection pooling is per-thread.
 6. **SummarizationAgent is NOT a task agent** — it's only called during compression, not from MongoDB task triggers.
 7. **Compression triggered separately** by `compress_conversation=True` flag on MongoDB doc — different path from normal `run_signal`.
+8. **`target_machine_id` routing** — the poll query only picks up tasks where `target_machine_id` is null/absent OR matches `self.machine_id`. If the machine is offline, targeted tasks will sit unclaimed indefinitely.
+9. **`user_guid` in MachineService is hardcoded** — currently `m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2`. Multi-user deployments require an env var.
+10. **`machine_id`/`machine_name` stamped on every save** — reflects the last machine to process the conversation, not necessarily the originally targeted one.

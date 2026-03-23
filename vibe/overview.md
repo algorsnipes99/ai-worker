@@ -29,15 +29,17 @@ DeepSeek API  (LLM backend, model: deepseek-chat)
 
 | Component | Location | Role |
 |-----------|----------|------|
-| Main worker | `agent-worker.py` | MongoDB polling, thread dispatch, compression handling |
+| Main worker | `agent-worker.py` | MongoDB polling, thread dispatch, compression handling, machine registration |
 | BaseAgent | `agents/base_agent.py` | Stateful agent loop, resumption, LLM orchestration |
 | Agent types | `agents/*.py` | Specialized agents (DB, files, shell, API, codebase) |
 | FunctionCallingSystem | `functions/function_calling_system.py` | Tool execution pipeline, permission checks |
 | FunctionRegistry | `functions/function_registry.py` | Tool catalog and schema generation for LLM |
 | Tools | `functions/` | 22+ tool implementations |
-| MessageService | `services/message_service.py` | Conversation history in MongoDB |
+| MessageService | `services/message_service.py` | Conversation history in MongoDB (includes machine_id/name) |
+| MachineService | `services/machine_service.py` | Machine online/offline registration in MongoDB |
 | StateService | `services/state_service.py` | Execution state snapshots for resumption |
 | PermissionManager | `utils/permission_manager.py` | Tool-level permission gating via JSON file |
+| MachineInfo | `utils/machine_info.py` | Get machine ID (from OS/registry) and hostname |
 | Compressors | `conversation_compressor/` | Message history compression strategies |
 
 ## Agent Types
@@ -72,6 +74,7 @@ DeepSeek API  (LLM backend, model: deepseek-chat)
 All config via `.env` file. Key variables:
 ```
 MONGODB_URI, MONGODB_DB_NAME, MONGODB_COLLECTION_NAME, MONGODB_STATE_COLLECTION
+MONGODB_MACHINES_COLLECTION   (default: 'machines')
 DEEPSEEK_API_KEY, DEEPSEEK_API_URL
 CODE_REPOSITORY_RAG_PATH, CODEBASE_REPO_PATHS
 ```
