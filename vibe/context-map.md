@@ -148,5 +148,5 @@ Permission state lives in `active_permissions.json`. External interface must set
 6. **SummarizationAgent is NOT a task agent** — it's only called during compression, not from MongoDB task triggers.
 7. **Compression triggered separately** by `compress_conversation=True` flag on MongoDB doc — different path from normal `run_signal`.
 8. **`target_machine_id` routing** — the poll query only picks up tasks where `target_machine_id` is null/absent OR matches `self.machine_id`. If the machine is offline, targeted tasks will sit unclaimed indefinitely.
-9. **`user_guid` in MachineService is hardcoded** — currently `m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2`. Multi-user deployments require an env var.
+9. **Machine pairing required on first run** — if the machine doc has no `user_guid`, the worker opens the browser to `UI_URL/pair/<token>` and blocks until the user completes pairing via the UI. Subsequent startups skip this. Token TTL is 10 minutes; worker exits if it expires unpaired.
 10. **`machine_id`/`machine_name` stamped on every save** — reflects the last machine to process the conversation, not necessarily the originally targeted one.

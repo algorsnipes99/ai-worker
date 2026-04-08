@@ -15,6 +15,8 @@ from services.machine_service import MachineService
 import os
 import time
 import logging
+import secrets
+import webbrowser
 from typing import Dict, Any, Type
 import signal
 import sys
@@ -36,6 +38,19 @@ class AgentWorker:
         self.api_key = os.getenv('DEEPSEEK_API_KEY')
         self.machine_id = get_machine_id()
         self.machine_service = MachineService()
+
+        if not self.machine_service.is_paired():
+            ui_url = os.getenv('UI_URL', 'http://localhost:3000').rstrip('/')
+            token = secrets.token_urlsafe(32)
+            self.machine_service.create_pairing_token(token)
+            pair_url = f"{ui_url}/pair/{token}"
+            logging.info(f"Machine not paired. Opening browser for pairing: {pair_url}")
+            webbrowser.open(pair_url)
+            paired = self.machine_service.wait_for_pairing()
+            if not paired:
+                logging.error("Pairing timed out (10 minutes). Exiting.")
+                sys.exit(1)
+
         self.machine_service.register()
 
         # Configure logging

@@ -54,32 +54,38 @@ PermissionManager — tool approval state (local: active_permissions.json)
 
 ## MachineService (`services/machine_service.py`)
 
-**Responsibility**: Register this machine as online when the worker starts and offline when it shuts down.
+**Responsibility**: Register/deregister this machine's online/offline status in MongoDB
+and manage the one-time device pairing flow that links the machine to a Firebase user.
 
-**MongoDB collection**: `MONGODB_MACHINES_COLLECTION` env var (default: `machines`)
+**MongoDB collections**:
+- `MONGODB_MACHINES_COLLECTION` env var (default: `machines`)
+- `MONGODB_PAIRING_TOKENS_COLLECTION` env var (default: `pairingtokens`)
 
-**Document shape**:
+**Machine document shape**:
 ```json
 {
   "machine_id": "<OS/registry machine GUID>",
   "machine_name": "<hostname>",
-  "user_guid": "m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2",
+  "user_guid": "<Firebase UID — written by backend after pairing>",
   "status": "online | offline",
   "last_seen": "2024-01-01T00:01:00"
 }
 ```
 
-`machine_id` is unique. Documents are upserted — one record per physical machine.
+`user_guid` is absent until pairing completes — written by the Express backend after
+verifying the user's Firebase ID token (never written directly by the worker).
 
 **Key methods**:
-- `register()` — upsert with `status='online'`, update `last_seen`
+- `is_paired() -> bool` — True if machine doc exists with a non-empty `user_guid`
+- `create_pairing_token(token)` — upsert pending token into `pairingtokens` (TTL 10 min)
+- `wait_for_pairing(timeout_seconds=600) -> bool` — poll every 5s until `user_guid` appears
+- `register()` — upsert with `status='online'`, update `last_seen` (does NOT touch `user_guid`)
 - `deregister()` — set `status='offline'`, update `last_seen`
 
 **When called**:
-- `register()` is called in `AgentWorker.__init__()` immediately after the machine ID is resolved
+- Pairing check runs in `AgentWorker.__init__()` before `register()`; blocks until done or timeout
+- `register()` is called once pairing is confirmed
 - `deregister()` is called in `AgentWorker.handle_shutdown()` after the thread pool drains
-
-**Note**: `user_guid` is currently hardcoded to `m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2`. To support multi-user deployments, move this to an env var.
 
 ---
 
