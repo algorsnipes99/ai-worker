@@ -8,6 +8,7 @@ from agents.command_prompt_agent import CommandPromptAgent
 from agents.file_manager_agent import FileManagerAgent
 from agents.summarization_agent import SummarizationAgent
 from agents.codebase_expert_agent import CodebaseExpertAgent
+from agents.custom_agent import CustomAgent
 from concurrent.futures import ThreadPoolExecutor
 from utils.machine_info import get_machine_id
 from services.machine_service import MachineService
@@ -146,6 +147,7 @@ class AgentWorker:
             'child_resume_guid': doc.get('child_resume_guid'),
             'agent_class_name': doc.get('agent_class_name'),
             'model_name': doc.get('model_name', 'deepseek-v4-flash'),
+            'available_tools': doc.get('available_tools', []),
             '_id': doc.get('_id', 'unknown')
         }
 
@@ -178,6 +180,7 @@ class AgentWorker:
             'filemanageragent': FileManagerAgent,
             'summarizationagent': SummarizationAgent,
             'codebaseexpertagent': CodebaseExpertAgent,
+            'customagent': CustomAgent,
         }
         agent_class = mapping.get(agent_class_name.lower())
         if not agent_class:
@@ -211,7 +214,8 @@ class AgentWorker:
                 parent_message_guid=message.get('parent_message_guid'),
                 parent_resume_guid=message.get('parent_resume_guid'),
                 child_resume_guid=message.get('child_resume_guid'),
-                model_name=message.get('model_name', 'deepseek-v4-flash')
+                model_name=message.get('model_name', 'deepseek-v4-flash'),
+                available_tools=message.get('available_tools', [])
             )
             result = agent.run(message['user_request'])
             self.logger.info(f"Thread {thread_name} - {agent_class.__name__} completed {message_id}: {result}")

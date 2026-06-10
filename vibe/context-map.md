@@ -20,9 +20,11 @@ agents/file_manager_agent.py             File read/write/edit + commands + codeb
 agents/command_prompt_agent.py           Shell command execution
 agents/api_agent.py                      HTTP API calls (GET/POST)
 agents/codebase_expert_agent.py          RAG-based codebase Q&A
+agents/custom_agent.py                   Dynamic tool set via available_tools (DB/UI-driven)
 agents/summarization_agent.py            Conversation compression via summarization
 functions/function_calling_system.py     LLM call + tool parse + execute + permission check
-functions/function_registry.py           Tool catalog; generates JSON schemas for LLM
+functions/function_registry.py           Tool registry; generates JSON schemas for LLM
+functions/tool_catalog.py                Tool name string -> Function factory map; build_registry()
 functions/function.py                    Abstract base for all tools
 functions/delegate_to_agent_function.py  Create child agents; key for multi-agent workflows
 functions/file_edit_function.py          Atomic file edit with backup
@@ -57,7 +59,8 @@ prompts/*.txt                            System prompts per agent type
   "status": "active",
   "machine_id": "<set by worker after processing>",
   "machine_name": "<set by worker after processing>",
-  "target_machine_id": "<null = any machine, or specific machine_id>"
+  "target_machine_id": "<null = any machine, or specific machine_id>",
+  "available_tools": "<optional list of tool name strings; used by CustomAgent>"
 }
 ```
 

@@ -103,6 +103,19 @@ When an agent is interrupted mid-execution (permission exception, error, pause),
 - **Use case**: Answering questions about a codebase using semantic RAG search
 - **Config**: Default repo paths hardcoded to `C:\dev\mqx\*`; override via `CODEBASE_REPO_PATHS` env var
 
+### CustomAgent
+
+- **File**: `agents/custom_agent.py`
+- **System prompt**: `prompts/custom_agent_prompt.txt`
+- **Tools**: Dynamic — built from `available_tools` (list of tool name strings) passed
+  into `BaseAgent.__init__`, resolved via `functions/tool_catalog.py`. Falls back to
+  `["executeCommand"]` if `available_tools` is empty.
+- **Use case**: DB-driven / UI-configured agents where the tool set is chosen per-task
+  rather than hardcoded in a subclass
+- **Notable**: Unknown tool names in `available_tools` are logged and skipped.
+  `delegateToAgent` is not available to custom agents (requires resume GUIDs not
+  available at `_initialize_tools()` time).
+
 ### SummarizationAgent
 
 - **File**: `agents/summarization_agent.py`
@@ -110,6 +123,17 @@ When an agent is interrupted mid-execution (permission exception, error, pause),
 - Summarizes the first N messages in a conversation to reduce token usage
 
 ---
+
+## Dynamic Tool Registration (`available_tools`)
+
+`BaseAgent.__init__` accepts an optional `available_tools: List[str]` param,
+stored as `self.available_tools`. Any agent can call
+`self._build_registry_from_available_tools(default=[...])` from its
+`_initialize_tools()` to build a `FunctionRegistry` from those tool name
+strings via `functions/tool_catalog.TOOL_CATALOG` (keyed by the LLM-facing
+tool name, e.g. `"readFile"`, `"sql_query"`). Unknown names are logged and
+skipped. `CustomAgent` is the only agent currently using this; existing
+agents keep their hardcoded `_initialize_tools()`.
 
 ## Adding a New Agent
 

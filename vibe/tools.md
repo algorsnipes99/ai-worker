@@ -103,6 +103,22 @@ Central orchestrator. Called by BaseAgent for each LLM interaction.
 
 **Error handling**: Tool execution errors are caught and returned as error strings to the LLM (not raised), so the agent can retry or adapt.
 
+## Tool Catalog (`functions/tool_catalog.py`)
+
+Maps tool name strings (the same `name` used in LLM tool schemas, e.g.
+`"readFile"`, `"sql_query"`) to factories that build the corresponding
+`Function` instance. Used by `CustomAgent` (and any agent calling
+`BaseAgent._build_registry_from_available_tools()`) to assemble a
+`FunctionRegistry` from a DB/UI-supplied list of tool names.
+
+- `TOOL_CATALOG: Dict[str, Callable[[BaseAgent], Function]]` — factory receives
+  the owning agent so context-dependent tools (e.g. `codebaseQuery`, which
+  needs `agent._get_repo_paths()`) can be constructed correctly.
+- `build_registry(tool_names, agent) -> FunctionRegistry` — looks up each name,
+  logs and skips unknown names, registers the rest.
+- `delegateToAgent` is intentionally **not** in the catalog — it requires
+  resume GUIDs only known after `BaseAgent.__init__` context is fully set up.
+
 ## Adding a New Tool
 
 1. Create `functions/your_tool_function.py`
@@ -111,3 +127,5 @@ Central orchestrator. Called by BaseAgent for each LLM interaction.
 4. Implement `execute(**kwargs) -> str`
 5. Import and add to the `FunctionRegistry` in the relevant agent's `__init__`
 6. If the tool needs permission gating, set `needs_verification = True`
+7. If the tool should be selectable for `CustomAgent`/dynamic registration, add
+   an entry to `TOOL_CATALOG` in `functions/tool_catalog.py`

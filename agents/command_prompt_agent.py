@@ -1,4 +1,3 @@
-import os
 from typing import Dict
 from functions.function_registry import FunctionRegistry
 from functions.command_function import CommandFunction
@@ -28,9 +27,3 @@ class CommandPromptAgent(BaseAgent):
         # if repo_paths:
         #     registry.register(CodebaseQueryFunction(repo_paths=repo_paths)) // will add agai in future, too slow and inaccurate
         return registry
-
-    # Read repo paths from CODEBASE_REPO_PATHS (or CODEBASE_REPO_PATH) env var.
-    # @returns: List of non-empty path strings, or an empty list if the env var is unset.
-    def _get_repo_paths(self):
-        raw = os.getenv('CODEBASE_REPO_PATHS', os.getenv('CODEBASE_REPO_PATH', ''))
-        return [p.strip() for p in raw.split(',') if p.strip()]

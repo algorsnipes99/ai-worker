@@ -1,6 +1,15 @@
 # Task: DB-Driven Custom Agent (Dynamic Tool Registration)
 
-## Status: PLANNING — awaiting review
+## Status: IMPLEMENTED
+
+## Decisions
+
+1. Tool catalog keys = LLM-facing tool names (as proposed)
+2. `delegateToAgent` excluded from `CustomAgent` for now
+3. Default tool when `available_tools` is empty: `["executeCommand"]`
+4. Existing agents (Database/File/Api/...) do NOT use `available_tools` —
+   `CustomAgent`-only mechanism for now
+5. Unknown tool names: log and skip
 
 ## Goal
 
@@ -175,13 +184,13 @@ tool-specific assumptions baked in).
 
 ## Implementation Checklist
 
-- [ ] `functions/tool_catalog.py` — `TOOL_CATALOG` dict + `build_registry()`
-- [ ] `agents/base_agent.py` — `available_tools` param, `_build_registry_from_available_tools()`,
+- [x] `functions/tool_catalog.py` — `TOOL_CATALOG` dict + `build_registry()`
+- [x] `agents/base_agent.py` — `available_tools` param, `_build_registry_from_available_tools()`,
       hoist `_get_repo_paths()` from `FileManagerAgent`/`CommandPromptAgent`
-- [ ] `agents/custom_agent.py` — new `CustomAgent` class
-- [ ] `prompts/custom_agent_prompt.txt` — new generic system prompt
-- [ ] `agent-worker.py` — agent class mapping + `available_tools` pass-through
-- [ ] Update `vibe/agents.md`, `vibe/tools.md`, `vibe/context-map.md` with the
+- [x] `agents/custom_agent.py` — new `CustomAgent` class
+- [x] `prompts/custom_agent_prompt.txt` — new generic system prompt
+- [x] `agent-worker.py` — agent class mapping + `available_tools` pass-through
+- [x] Update `vibe/agents.md`, `vibe/tools.md`, `vibe/context-map.md` with the
       new agent type, catalog, and MongoDB field
 - [ ] Manual test: MongoDB doc with `agent_class_name: "CustomAgent"` +
       `available_tools: ["readFile", "executeCommand"]`, verify only those

@@ -28,11 +28,14 @@ class BaseAgent(ABC):
     # @param parent_message_guid: GUID of the parent agent (if this is a child agent).
     # @param parent_resume_guid: GUID to resume for the top-level (parent) agent.
     # @param child_resume_guid: GUID to resume for a child agent spawned via delegation.
+    # @param available_tools: Optional list of tool name strings (e.g. from a DB-driven
+    #        agent config) used by _initialize_tools() to build a dynamic tool registry.
     def __init__(self, user_request: str, plan_text: str, api_key: str,
                  parent_message_guid: Optional[str] = None,
                  parent_resume_guid: Optional[str] = None,
                  child_resume_guid: Optional[str] = None,
-                 model_name: str = DEFAULT_MODEL):
+                 model_name: str = DEFAULT_MODEL,
+                 available_tools: Optional[List[str]] = None):
         self.user_request = user_request
         self.plan_text = plan_text
         self.api_key = api_key
@@ -41,6 +44,7 @@ class BaseAgent(ABC):
         self.parent_message_guid = parent_message_guid
         self.parent_resume_guid = parent_resume_guid
         self.child_resume_guid = child_resume_guid
+        self.available_tools = available_tools or []
         self.execution_state = {}
         self.message_service = MessageService(self.messages_dir)
         self.state_service = StateService(self.messages_dir)
@@ -63,6 +67,21 @@ class BaseAgent(ABC):
     @abstractmethod
     def _initialize_tools(self) -> FunctionRegistry:
         pass
+
+    # Build a FunctionRegistry from self.available_tools via the tool catalog.
+    # Falls back to `default` tool names if available_tools is empty.
+    # @param default: Tool name strings to use when self.available_tools is empty.
+    # @returns: A populated FunctionRegistry.
+    def _build_registry_from_available_tools(self, default: Optional[List[str]] = None) -> FunctionRegistry:
+        from functions.tool_catalog import build_registry
+        tool_names = self.available_tools or default or []
+        return build_registry(tool_names, self)
+
+    # Read repo paths from CODEBASE_REPO_PATHS (or CODEBASE_REPO_PATH) env var.
+    # @returns: List of non-empty path strings, or an empty list if neither env var is set.
+    def _get_repo_paths(self) -> List[str]:
+        raw = os.getenv('CODEBASE_REPO_PATHS', os.getenv('CODEBASE_REPO_PATH', ''))
+        return [p.strip() for p in raw.split(',') if p.strip()]
 
     # Read the system prompt from disk; return a default string if the file is missing or unreadable.
     # @returns: The raw system prompt text.
