@@ -5,15 +5,16 @@ from functions.function_registry import FunctionRegistry
 from utils.permission_manager import PermissionManager
 from exceptions.tool_permission_exception import ToolPermissionRequiredException
 
+THINKING_MODELS = {'deepseek-v4-pro'}
+DEFAULT_MODEL = 'deepseek-v4-flash'
+
 class FunctionCallingSystem:
     """Handles LLM function calling workflow"""
 
-    # Initialize with a tool registry and DeepSeek API key.
-    # @param registry: FunctionRegistry containing all available tools for this agent.
-    # @param api_key: DeepSeek API key used for LLM calls.
-    def __init__(self, registry: FunctionRegistry, api_key: str):
+    def __init__(self, registry: FunctionRegistry, api_key: str, model_name: str = DEFAULT_MODEL):
         self.registry = registry
         self.api_key = api_key
+        self.model_name = model_name
         self.api_url = "https://api.deepseek.com/v1/chat/completions"
         self.permission_manager = PermissionManager()
 
@@ -23,15 +24,21 @@ class FunctionCallingSystem:
     # @param tools: Optional list of tool schema dicts.
     # @returns: Parsed JSON response dict.
     # @raises HTTPError: If the API returns a non-200 status.
+    def _sanitize_messages_for_api(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Strip UI-only fields (e.g. 'thinking') before sending to the API."""
+        return [{k: v for k, v in msg.items() if k != 'thinking'} for msg in messages]
+
     def _call_deepseek(self, messages: List[Dict[str, Any]], tools: List[Dict[str, Any]] = None):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
         }
         data = {
-            "model": "deepseek-chat",
-            "messages": messages
+            "model": self.model_name,
+            "messages": self._sanitize_messages_for_api(messages)
         }
+        if self.model_name in THINKING_MODELS:
+            data["thinking"] = {"type": "enabled"}
         if tools:
             data["tools"] = tools
             data["tool_choice"] = "auto"

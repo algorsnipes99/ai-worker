@@ -116,7 +116,7 @@ class SummarizationAgent:
         }
 
         data = {
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "messages": messages,
             "max_tokens": 1000,
             "temperature": 0.3  # Lower temperature for more factual summarization

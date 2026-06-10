@@ -185,15 +185,29 @@ delegateToAgent.execute():
 
 ---
 
-## Machine Registration Flow
+## Machine Registration & Pairing Flow
 
 On worker startup (`AgentWorker.__init__`):
 ```
-get_machine_id()  → reads Windows registry (HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid)
-                    or /etc/machine-id on Linux
+get_machine_id()   → reads Windows registry (HKLM\SOFTWARE\Microsoft\Cryptography\MachineGuid)
+                     or /etc/machine-id on Linux
 get_machine_name() → socket.gethostname()
+
+MachineService.is_paired()?
+  YES → skip pairing, continue to register()
+  NO  →
+    token = secrets.token_urlsafe(32)
+    MachineService.create_pairing_token(token)
+      → upsert pairingtokens: { token, machine_id, machine_name, status:'pending', expires_at: now+10min }
+    webbrowser.open("UI_URL/pair/<token>")
+    MachineService.wait_for_pairing(timeout=600s)
+      → polls machines collection every 5s for user_guid to appear
+      → returns True when paired, False on timeout
+    if timeout → sys.exit(1)
+
 MachineService.register()
-  → upsert machines collection: { machine_id, machine_name, user_guid, status:'online', last_seen }
+  → upsert machines collection: { machine_id, machine_name, status:'online', last_seen }
+  (does NOT overwrite user_guid)
 ```
 
 On worker shutdown (`AgentWorker.handle_shutdown`):
@@ -201,6 +215,23 @@ On worker shutdown (`AgentWorker.handle_shutdown`):
 thread pool drains (wait=True)
 MachineService.deregister()
   → update machines collection: { status:'offline', last_seen }
+```
+
+**UI pairing side** (handled in `mongo-chat-ui`):
+```
+Browser opens UI_URL/pair/<token>
+  → App.jsx detects /pair/ prefix → renders <PairDevice token={...}>
+  → PairDevice fetches GET /api/pair/:token (validates token, gets machine_name)
+  → if not logged in → shows Login form
+  → on login: AuthContext.currentUser becomes non-null
+  → useEffect detects currentUser + status=NEEDS_LOGIN
+  → calls POST /api/pair { token } with Authorization: Bearer <Firebase ID token>
+  → backend verifies token via Firebase REST API → gets uid
+  → backend writes user_guid=uid on machines document
+  → backend marks pairing token status='completed'
+  → PairDevice shows success screen ("Device paired!")
+  → worker's wait_for_pairing() detects user_guid, returns True
+  → worker continues normal startup
 ```
 
 ---
@@ -211,6 +242,7 @@ MachineService.deregister()
 |------|-------|-----|
 | Conversation messages | MongoDB `messages` collection | `guid` |
 | Machine online/offline status | MongoDB `machines` collection | `machine_id` |
+| Pairing tokens | MongoDB `pairingtokens` collection | `token` |
 | Execution state | MongoDB `states` collection | `guid` |
 | Tool permissions | `active_permissions.json` | tool name |
 | Agent lineage (parent/child GUIDs) | `active_permissions.json` | fixed keys |

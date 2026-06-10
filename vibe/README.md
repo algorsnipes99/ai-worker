@@ -24,6 +24,10 @@ Quick-start reference for LLM sessions working on this codebase.
 - **[services.md](services.md)** — MessageService, StateService, PermissionManager, exception handling
 - **[execution-flow.md](execution-flow.md)** — Full end-to-end flow, message array evolution, compression, permission exception, delegation
 
+## Planned Changes
+
+- **[redis-pubsub-plan.md](redis-pubsub-plan.md)** — Replace MongoDB polling with Redis pub/sub (notify-then-fetch pattern)
+
 ## TL;DR
 
 This is a **MongoDB-triggered multi-agent AI worker**. MongoDB docs with `run_signal=true` trigger specialized AI agents that use tool calling (DeepSeek LLM) to complete tasks. Full execution state is persisted for resumption after interruptions, permission denials, or pauses.

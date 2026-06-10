@@ -65,7 +65,7 @@ class MessageSummarizer(BaseCompressor):
     def _shorten(self, text: str) -> str:
         try:
             response = self.client.chat.completions.create(
-                model='deepseek-chat',
+                model='deepseek-v4-flash',
                 messages=[
                     {
                         'role': 'system',

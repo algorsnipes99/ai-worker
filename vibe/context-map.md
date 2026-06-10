@@ -30,7 +30,7 @@ functions/command_function.py            Shell command runner (subprocess)
 functions/sql_query.py                   SQL SELECT/INSERT/UPDATE/DELETE
 functions/codebase_query_function.py     Delegates to Code-Repository-RAG for code search
 services/message_service.py             Save/load conversation history in MongoDB; stamps machine_id/machine_name
-services/machine_service.py             Upsert machine record online/offline in machines collection
+services/machine_service.py             Machine pairing flow + online/offline upsert; also manages pairingtokens collection
 services/state_service.py               Save/load execution state snapshots in MongoDB
 utils/machine_info.py                   get_machine_id() (registry/OS) + get_machine_name() (hostname)
 utils/permission_manager.py             active_permissions.json read/write; gating logic
@@ -66,9 +66,21 @@ prompts/*.txt                            System prompts per agent type
 {
   "machine_id": "<OS/registry machine GUID>",
   "machine_name": "<hostname>",
-  "user_guid": "m8JLGcC0mxMWHWQ1QbO2NJ3xlgz2",
+  "user_guid": "<Firebase UID — written by backend after pairing; absent until first pairing>",
   "status": "online | offline",
   "last_seen": "<ISO timestamp>"
+}
+```
+
+**Pairing token (pairingtokens collection)**:
+```json
+{
+  "token": "<cryptographically random URL-safe string>",
+  "machine_id": "<OS/registry machine GUID>",
+  "machine_name": "<hostname>",
+  "status": "pending | completed | expired",
+  "created_at": "<ISO timestamp>",
+  "expires_at": "<ISO timestamp, TTL 10 minutes>"
 }
 ```
 
@@ -133,6 +145,7 @@ Permission state lives in `active_permissions.json`. External interface must set
 | Add new agent system prompt | `prompts/` + wire in agent's `system_prompt` property |
 | Understand MongoDB schema | `services/message_service.py` + `services/state_service.py` |
 | Multi-agent delegation | `functions/delegate_to_agent_function.py` |
+| Machine pairing (first run) | `services/machine_service.py` + `agent-worker.py` `__init__` |
 | Machine registration / status | `services/machine_service.py` + `agent-worker.py` `__init__`/`handle_shutdown` |
 | Change machine routing logic | `agent-worker.py` poll query (`$or` on `target_machine_id`) |
 

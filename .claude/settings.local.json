@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(grep -E \"\\\\.py$|\\\\.md$|\\\\.json$\")"
-    ]
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "WebFetch"    ]
   }
 }

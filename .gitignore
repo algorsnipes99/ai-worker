@@ -46,3 +46,5 @@ data/
 
 # Active permissions file (contains sensitive data)
 active_permissions.json
+*.pyc
+__pycache__

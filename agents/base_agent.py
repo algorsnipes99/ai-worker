@@ -4,7 +4,7 @@ import uuid
 import os
 from typing import Dict, Any, List, Optional
 from functions.function_registry import FunctionRegistry
-from functions.function_calling_system import FunctionCallingSystem
+from functions.function_calling_system import FunctionCallingSystem, DEFAULT_MODEL
 from utils.permission_manager import PermissionManager
 from services.message_service import MessageService
 from services.state_service import StateService
@@ -31,10 +31,12 @@ class BaseAgent(ABC):
     def __init__(self, user_request: str, plan_text: str, api_key: str,
                  parent_message_guid: Optional[str] = None,
                  parent_resume_guid: Optional[str] = None,
-                 child_resume_guid: Optional[str] = None):
+                 child_resume_guid: Optional[str] = None,
+                 model_name: str = DEFAULT_MODEL):
         self.user_request = user_request
         self.plan_text = plan_text
         self.api_key = api_key
+        self.model_name = model_name
         self.message_guid: Optional[str] = None
         self.parent_message_guid = parent_message_guid
         self.parent_resume_guid = parent_resume_guid
@@ -43,7 +45,7 @@ class BaseAgent(ABC):
         self.message_service = MessageService(self.messages_dir)
         self.state_service = StateService(self.messages_dir)
         self.registry = self._initialize_tools()
-        self.system = FunctionCallingSystem(self.registry, api_key=self.api_key)
+        self.system = FunctionCallingSystem(self.registry, api_key=self.api_key, model_name=self.model_name)
 
     # Directory path where agent messages are stored (subclass must implement).
     @property
@@ -441,7 +443,11 @@ class BaseAgent(ABC):
 
             if "choices" in response and response["choices"]:
                 choice = response["choices"][0]
-                messages.append(choice["message"])
+                assistant_msg = dict(choice["message"])
+                reasoning = assistant_msg.pop("reasoning_content", None)
+                if reasoning:
+                    assistant_msg["thinking"] = reasoning
+                messages.append(assistant_msg)
 
                 if "tool_calls" in choice["message"]:
                     # Update state to before tool call

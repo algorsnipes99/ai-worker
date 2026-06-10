@@ -36,7 +36,7 @@ DeepSeek API  (LLM backend, model: deepseek-chat)
 | FunctionRegistry | `functions/function_registry.py` | Tool catalog and schema generation for LLM |
 | Tools | `functions/` | 22+ tool implementations |
 | MessageService | `services/message_service.py` | Conversation history in MongoDB (includes machine_id/name) |
-| MachineService | `services/machine_service.py` | Machine online/offline registration in MongoDB |
+| MachineService | `services/machine_service.py` | Machine pairing + online/offline registration in MongoDB |
 | StateService | `services/state_service.py` | Execution state snapshots for resumption |
 | PermissionManager | `utils/permission_manager.py` | Tool-level permission gating via JSON file |
 | MachineInfo | `utils/machine_info.py` | Get machine ID (from OS/registry) and hostname |
@@ -74,9 +74,11 @@ DeepSeek API  (LLM backend, model: deepseek-chat)
 All config via `.env` file. Key variables:
 ```
 MONGODB_URI, MONGODB_DB_NAME, MONGODB_COLLECTION_NAME, MONGODB_STATE_COLLECTION
-MONGODB_MACHINES_COLLECTION   (default: 'machines')
+MONGODB_MACHINES_COLLECTION          (default: 'machines')
+MONGODB_PAIRING_TOKENS_COLLECTION    (default: 'pairingtokens')
 DEEPSEEK_API_KEY, DEEPSEEK_API_URL
 CODE_REPOSITORY_RAG_PATH, CODEBASE_REPO_PATHS
+UI_URL                               (default: 'http://localhost:3000') — used for first-run pairing link
 ```
 
 See `CONFIGURATION.md` for full reference.
