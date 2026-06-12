@@ -51,9 +51,38 @@ Parameters are dicts with: `name`, `type`, `description`, `required`, optional `
 | `codebaseQuery` | `codebase_query_function.py` | RAG semantic search over code repo | No |
 | `delegateToAgent` | `delegate_to_agent_function.py` | Spin up a child agent for subtask | No |
 | `calculator` | `calculator_function.py` | Safe math expression evaluation | No |
+| `sshConnect` | `ssh_functions.py` | Connect to or disconnect from an SSH server | No |
+| `sshExecute` | `ssh_functions.py` | Execute a command on an active SSH session | No |
 | (others) | `functions/` | Keyboard, cursor, app control, network | Varies |
 
 ## Notable Tool Details
+
+### `sshConnect` / `sshExecute` — SSH Remote Access
+
+Two tools that together provide full remote server access via SSH:
+
+- **`sshConnect`** — Opens (or closes) an SSH connection. Use `action="connect"` with
+  `host`, `username`, and either `password` or `key_file_path`. Returns a `session_id`
+  (format `"host:port"`) that must be passed to `sshExecute`.
+  Use `action="disconnect"` with the `session_id` to close the session.
+- **`sshExecute`** — Runs any shell command on the remote server via the active session.
+  Use `cat <path>` to read remote files, `ls`/`find` to navigate, `cd && <cmd>` or the
+  `working_directory` parameter to change directories. Returns `stdout`, `stderr`, and `exit_code`.
+
+**Connection pooling**: Sessions are stored in a module-level dict keyed by `session_id`.
+Reconnecting to the same host:port closes the old connection first. Active sessions
+persist across tool calls within the same agent execution.
+
+**Requires**: `pip install paramiko`
+
+**Security note**: Credentials (password, key_file_path) appear in tool call arguments
+which are stored in MongoDB conversation history. Use key-based auth for production.
+
+**Typical flow**:
+1. `sshConnect(action="connect", host="myserver.com", username="admin", password="...")`
+2. `sshExecute(session_id="myserver.com:22", command="ls -la /var/log")`
+3. `sshExecute(session_id="myserver.com:22", command="cat /var/log/app.log")`
+4. `sshConnect(action="disconnect", session_id="myserver.com:22")`
 
 ### `editFile` — Atomic File Editing
 - Writes to temp file first, then `os.replace()` (atomic on POSIX, best-effort on Windows)

@@ -21,6 +21,7 @@ from functions.cursor_function import CursorFunction
 from functions.keyboard_input_function import KeyboardInputFunction
 from functions.network_function import NetworkScanFunction
 from functions.weather_function import WeatherFunction
+from functions.ssh_functions import SshConnectFunction, SshExecuteFunction
 
 if TYPE_CHECKING:
     from agents.base_agent import BaseAgent
@@ -48,6 +49,8 @@ TOOL_CATALOG: Dict[str, Callable[["BaseAgent"], Function]] = {
     "keyboardInput": lambda agent: KeyboardInputFunction(),
     "scanNetwork": lambda agent: NetworkScanFunction(),
     "get_current_weather": lambda agent: WeatherFunction(),
+    "sshConnect": lambda agent: SshConnectFunction(),
+    "sshExecute": lambda agent: SshExecuteFunction(),
 }
 
 

@@ -33,9 +33,12 @@ class MessageService:
     # @param guid: Unique execution identifier.
     # @param agent_class_name: Lowercased agent class name stored for filtering.
     # @param parent_message_guid: Optional parent agent GUID for child agents.
+    # @param token_usage: Optional usage dict from the last LLM response
+    #        (prompt_tokens/completion_tokens/total_tokens), used to show context usage in the UI.
     # @returns: pymongo UpdateResult.
     def save_messages(self, messages: List[Dict[str, Any]], guid: str,
-                     agent_class_name: str, parent_message_guid: Optional[str] = None):
+                     agent_class_name: str, parent_message_guid: Optional[str] = None,
+                     token_usage: Optional[Dict[str, Any]] = None):
         document = {
             'guid': guid,
             'agent_class_name': agent_class_name.lower(),
@@ -45,6 +48,8 @@ class MessageService:
             'machine_name': get_machine_name(),
             'created_at': self._get_timestamp()
         }
+        if token_usage is not None:
+            document['token_usage'] = token_usage
         print("befoire save")
         # Upsert to update if exists or insert if new
         result = self.collection.update_one(

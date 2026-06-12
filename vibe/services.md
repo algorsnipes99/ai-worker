@@ -36,14 +36,17 @@ PermissionManager — tool approval state (local: active_permissions.json)
   "pause_signal": false,
   "machine_id": "<OS/registry machine GUID>",
   "machine_name": "<hostname>",
-  "target_machine_id": "<machine_id to route this task to, or null for any>"
+  "target_machine_id": "<machine_id to route this task to, or null for any>",
+  "token_usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 }
 ```
 
 `machine_id` and `machine_name` are written by `save_messages()` on every call, reflecting the machine that last processed the conversation. `target_machine_id` is set at conversation creation by the UI and used by `agent-worker.py` to filter task pickup.
 
+`token_usage` is the raw `usage` object from the most recent DeepSeek `chat/completions` response (captured in `BaseAgent._process_with_tools` as `self.last_token_usage` and passed into `save_messages`). Absent until the first LLM call completes. The UI (mongo-chat-ui) reads `token_usage.total_tokens` to show context-window usage, falling back to a client-side character-based estimate if the field is missing.
+
 **Key methods**:
-- `save_messages(guid, messages)` — upsert by guid
+- `save_messages(guid, messages, token_usage=None)` — upsert by guid; `token_usage` is only set in the doc when provided
 - `load_messages(guid)` — load with fallback search (exact → with parent GUID → regex)
 - `update_status(guid, status)` — set active/complete/paused
 - `check_and_clear_pause_signal(guid) → bool` — atomically read + clear pause flag

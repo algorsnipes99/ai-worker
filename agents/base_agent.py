@@ -45,6 +45,7 @@ class BaseAgent(ABC):
         self.parent_resume_guid = parent_resume_guid
         self.child_resume_guid = child_resume_guid
         self.available_tools = available_tools or []
+        self.last_token_usage: Optional[Dict[str, Any]] = None
         self.execution_state = {}
         self.message_service = MessageService(self.messages_dir)
         self.state_service = StateService(self.messages_dir)
@@ -116,7 +117,8 @@ class BaseAgent(ABC):
             messages=messages,
             guid=guid,
             agent_class_name=self.__class__.__name__,
-            parent_message_guid=self.parent_message_guid
+            parent_message_guid=self.parent_message_guid,
+            token_usage=self.last_token_usage
         )
 
         # Also save execution state
@@ -454,6 +456,9 @@ class BaseAgent(ABC):
                 messages=messages,
                 tools=self.registry.get_schemas()
             )
+
+            if response.get("usage"):
+                self.last_token_usage = response["usage"]
 
             if "error" in response:
                 self.execution_state["status"] = self.STATE_ERROR

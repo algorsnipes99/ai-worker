@@ -26,13 +26,22 @@ class FileEditFunction(Function):
                 },
                 "mode": {
                     "type": "string",
-                    "enum": ["overwrite", "append", "insert"],
+                    "enum": ["overwrite", "append", "insert", "replace"],
                     "default": "overwrite",
-                    "description": "Edit mode: overwrite, append, or insert"
+                    "description": "Edit mode: overwrite, append, insert, or replace"
                 },
                 "line": {
                     "type": "integer",
                     "description": "Line number for insert mode (1-based)"
+                },
+                "old_string": {
+                    "type": "string",
+                    "description": "Exact text to find for replace mode. Must match the file content exactly, including whitespace/indentation."
+                },
+                "replace_all": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": "For replace mode: replace all occurrences of old_string instead of requiring exactly one match"
                 },
                 "create": {
                     "type": "boolean",
@@ -129,6 +138,8 @@ class FileEditFunction(Function):
 
         mode = args.get("mode", "overwrite")
         line = args.get("line")
+        old_string = args.get("old_string")
+        replace_all = args.get("replace_all", False)
         create = args.get("create", True)
         backup = args.get("backup", True)
         cleanup_backups = args.get("cleanup_backups", False)
@@ -144,33 +155,48 @@ class FileEditFunction(Function):
         print(f"Editing file: {path}")
 
         # Validate mode early
-        if mode not in {"overwrite", "append", "insert"}:
+        if mode not in {"overwrite", "append", "insert", "replace"}:
             return {"error": f"Invalid mode: {mode}"}
 
         # Insert requires line
         if mode == "insert" and (line is None or not isinstance(line, int)):
             return {"error": "Insert mode requires an integer 'line' parameter (1-based)."}
 
-        # JSON handling
+        # Replace requires old_string, distinct from the replacement content
+        if mode == "replace":
+            if not isinstance(old_string, str) or old_string == "":
+                return {"error": "Replace mode requires a non-empty 'old_string' parameter."}
+            if old_string == content:
+                return {"error": "'old_string' and 'content' (the replacement text) must be different."}
+
+        backup_path = None
+        existed = os.path.exists(path)
+
+        # Replace mode edits existing content; nothing to replace if the file doesn't exist
+        if mode == "replace" and not existed:
+            return {"error": f"Cannot use replace mode: file does not exist: {path}"}
+
+        # JSON handling: only applies when 'content' represents the entire file
+        # (new file creation, or overwrite). For append/insert/replace, 'content'
+        # is just a fragment and won't parse as a standalone JSON document.
+        whole_file_content = (not existed) or (mode == "overwrite")
         try:
             is_json_path = path.lower().endswith(".json")
-            parsed = self._try_parse_json(content)
+            if whole_file_content:
+                parsed = self._try_parse_json(content)
 
-            if is_json_path and format_json:
-                if parsed is None:
-                    return {"error": "Invalid JSON content for .json file", "original_content": content}
-                content = json.dumps(parsed, indent=2, ensure_ascii=False) + "\n"
-            elif (not is_json_path) and auto_format_json_nonjson_files and parsed is not None:
-                content = json.dumps(parsed, indent=2, ensure_ascii=False)
+                if is_json_path and format_json:
+                    if parsed is None:
+                        return {"error": "Invalid JSON content for .json file", "original_content": content}
+                    content = json.dumps(parsed, indent=2, ensure_ascii=False) + "\n"
+                elif (not is_json_path) and auto_format_json_nonjson_files and parsed is not None:
+                    content = json.dumps(parsed, indent=2, ensure_ascii=False)
         except Exception as e:
             return {"error": f"JSON processing failed: {str(e)}"}
 
         # Optionally ensure trailing newline in the *content* (for overwrite scenarios)
         if ensure_trailing_newline and mode == "overwrite" and content and not content.endswith("\n"):
             content += "\n"
-
-        backup_path = None
-        existed = os.path.exists(path)
 
         # Create file if missing
         if not existed:
@@ -193,6 +219,14 @@ class FileEditFunction(Function):
                     path,
                     content,
                     ensure_newline_separation=ensure_newline_separation,
+                    ensure_trailing_newline=ensure_trailing_newline
+                )
+            elif mode == "replace":
+                result = self._replace_file(
+                    path,
+                    old_string=old_string,
+                    new_string=content,
+                    replace_all=replace_all,
                     ensure_trailing_newline=ensure_trailing_newline
                 )
             else:  # insert
@@ -347,6 +381,49 @@ class FileEditFunction(Function):
         self._atomic_write_text(path, new_content)
 
         return {"status": "inserted", "path": path, "line": line}
+
+    # Replace occurrences of old_string with new_string in the file's content.
+    # Requires exactly one match unless replace_all is set, mirroring a precise,
+    # unambiguous edit (more context in old_string makes it unique).
+    # @param path: File path to edit.
+    # @param old_string: Exact text to find.
+    # @param new_string: Replacement text.
+    # @param replace_all: If True, replace every occurrence instead of requiring exactly one.
+    # @param ensure_trailing_newline: Ensure the final file ends with a newline.
+    # @returns: Dict with 'status': 'replaced', 'path', and 'occurrences_replaced', or 'error'.
+    def _replace_file(
+        self,
+        path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+        ensure_trailing_newline: bool = False
+    ) -> Dict[str, Any]:
+        with open(path, "r", encoding="utf-8") as f:
+            original = f.read()
+
+        count = original.count(old_string)
+        if count == 0:
+            return {"error": f"old_string not found in file: {path}"}
+        if not replace_all and count > 1:
+            return {
+                "error": (
+                    f"old_string found {count} times in file; expected exactly 1 match. "
+                    "Provide more surrounding context to make it unique, or set replace_all=True."
+                )
+            }
+
+        if replace_all:
+            new_content = original.replace(old_string, new_string)
+        else:
+            new_content = original.replace(old_string, new_string, 1)
+
+        if ensure_trailing_newline and new_content and not new_content.endswith("\n"):
+            new_content += "\n"
+
+        self._atomic_write_text(path, new_content)
+
+        return {"status": "replaced", "path": path, "occurrences_replaced": count if replace_all else 1}
 
     # Copy the file to a timestamped backup in a 'backups/' subdirectory beside it.
     # @param path: File path to back up.

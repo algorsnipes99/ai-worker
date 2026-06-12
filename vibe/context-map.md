@@ -16,6 +16,7 @@
 agent-worker.py                          Main loop: MongoDB poll → thread dispatch; machine registration on start/stop
 agents/base_agent.py                     Stateful agent base: LLM loop, resumption, state machine
 agents/database_agent.py                 SQL operations (MySQL/Postgres/SQLite/MSSQL)
+| `ssh_functions.py`                | SSH connect/execute tools (remote server access via paramiko) |\n| `ssh_connection_manager.py`      | Module-level connection pool for SSH sessions |
 agents/file_manager_agent.py             File read/write/edit + commands + codebase search
 agents/command_prompt_agent.py           Shell command execution
 agents/api_agent.py                      HTTP API calls (GET/POST)
