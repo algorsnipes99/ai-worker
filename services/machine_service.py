@@ -80,9 +80,24 @@ class MachineService:
                 'machine_id': self.machine_id,
                 'machine_name': self.machine_name,
                 'status': 'online',
-                'last_seen': datetime.now().isoformat()
+                'last_seen': datetime.now().isoformat(),
+                'has_local_api_key': bool(os.getenv('DEEPSEEK_API_KEY'))
             }},
             upsert=True
+        )
+
+    def report_api_key_check(self, status: str, error: str = None) -> None:
+        """Record the result of an on-demand DEEPSEEK_API_KEY presence/validity check."""
+        self.collection.update_one(
+            {'machine_id': self.machine_id},
+            {'$set': {
+                'has_local_api_key': bool(os.getenv('DEEPSEEK_API_KEY')),
+                'api_key_check': {
+                    'status': status,
+                    'checked_at': datetime.now().isoformat(),
+                    'error': error
+                }
+            }}
         )
 
     def deregister(self) -> None:

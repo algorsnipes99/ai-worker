@@ -35,7 +35,9 @@ functions/codebase_query_function.py     Delegates to Code-Repository-RAG for co
 services/message_service.py             Save/load conversation history in MongoDB; stamps machine_id/machine_name
 services/machine_service.py             Machine pairing flow + online/offline upsert; also manages pairingtokens collection
 services/state_service.py               Save/load execution state snapshots in MongoDB
+services/api_key_service.py             Look up + decrypt a user's per-provider LLM API key (apikeys collection)
 utils/machine_info.py                   get_machine_id() (registry/OS) + get_machine_name() (hostname)
+utils/crypto.py                         AES-256-GCM encrypt/decrypt using shared ENCRYPTION_KEY (matches mongo-chat-ui)
 utils/permission_manager.py             active_permissions.json read/write; gating logic
 exceptions/tool_permission_exception.py  Raised when tool needs human approval
 conversation_compressor/                 Three strategies: remove tools, summarize, combined
@@ -152,6 +154,7 @@ Permission state lives in `active_permissions.json`. External interface must set
 | Machine pairing (first run) | `services/machine_service.py` + `agent-worker.py` `__init__` |
 | Machine registration / status | `services/machine_service.py` + `agent-worker.py` `__init__`/`handle_shutdown` |
 | Change machine routing logic | `agent-worker.py` poll query (`$or` on `target_machine_id`) |
+| Per-user API keys | `services/api_key_service.py` + `utils/crypto.py` + `agent-worker.py` `_process_document_thread` |
 
 ---
 
@@ -167,3 +170,5 @@ Permission state lives in `active_permissions.json`. External interface must set
 8. **`target_machine_id` routing** — the poll query only picks up tasks where `target_machine_id` is null/absent OR matches `self.machine_id`. If the machine is offline, targeted tasks will sit unclaimed indefinitely.
 9. **Machine pairing required on first run** — if the machine doc has no `user_guid`, the worker opens the browser to `UI_URL/pair/<token>` and blocks until the user completes pairing via the UI. Subsequent startups skip this. Token TTL is 10 minutes; worker exits if it expires unpaired.
 10. **`machine_id`/`machine_name` stamped on every save** — reflects the last machine to process the conversation, not necessarily the originally targeted one.
+11. **`ENCRYPTION_KEY` must match mongo-chat-ui** — if the keys differ, `ApiKeyService.get_api_key` will fail to decrypt (logged as a warning) and return `None`, falling through to the local `DEEPSEEK_API_KEY` env var (see #12).
+12. **Two API key sources, both optional** — `_process_document_thread` resolves `api_key = api_key_service.get_api_key(user_guid) or self.api_key`. `self.api_key` is this machine's local `DEEPSEEK_API_KEY` env var (`.env`), set independently per machine. If **neither** the platform key nor the local env var is set, `_reject_missing_api_key` appends an assistant message explaining both options and marks the conversation `complete` without running the agent. `MachineService.register()` reports `has_local_api_key` (bool) to the `machines` collection so mongo-chat-ui can tell whether a paired machine has its own key configured.

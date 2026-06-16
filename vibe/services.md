@@ -9,6 +9,7 @@ MessageService    — conversation history (MongoDB: messages collection)
 MachineService    — machine online/offline status (MongoDB: machines collection)
 StateService      — execution state snapshots (MongoDB: states collection)
 PermissionManager — tool approval state (local: active_permissions.json)
+ApiKeyService     — per-user encrypted LLM API keys (MongoDB: apikeys collection)
 ```
 
 ---
@@ -71,7 +72,13 @@ and manage the one-time device pairing flow that links the machine to a Firebase
   "machine_name": "<hostname>",
   "user_guid": "<Firebase UID — written by backend after pairing>",
   "status": "online | offline",
-  "last_seen": "2024-01-01T00:01:00"
+  "last_seen": "2024-01-01T00:01:00",
+  "has_local_api_key": false,
+  "api_key_check": {
+    "status": "missing | valid | invalid | error",
+    "checked_at": "2024-01-01T00:01:00",
+    "error": "<string or null>"
+  }
 }
 ```
 
@@ -82,12 +89,19 @@ verifying the user's Firebase ID token (never written directly by the worker).
 - `is_paired() -> bool` — True if machine doc exists with a non-empty `user_guid`
 - `create_pairing_token(token)` — upsert pending token into `pairingtokens` (TTL 10 min)
 - `wait_for_pairing(timeout_seconds=600) -> bool` — poll every 5s until `user_guid` appears
-- `register()` — upsert with `status='online'`, update `last_seen` (does NOT touch `user_guid`)
+- `register()` — upsert with `status='online'`, update `last_seen` and `has_local_api_key`
+  (does NOT touch `user_guid`)
+- `report_api_key_check(status, error=None)` — updates `has_local_api_key` and
+  `api_key_check` after an on-demand check (see below)
 - `deregister()` — set `status='offline'`, update `last_seen`
 
 **When called**:
 - Pairing check runs in `AgentWorker.__init__()` before `register()`; blocks until done or timeout
 - `register()` is called once pairing is confirmed
+- `report_api_key_check()` is called from `AgentWorker._check_api_key_thread()`, triggered by a
+  `check_api_key` Redis event (see redis-pubsub-plan.md). The worker re-reads
+  `DEEPSEEK_API_KEY` from its environment and makes a minimal DeepSeek request to confirm the
+  key is accepted before reporting `status: 'valid' | 'invalid' | 'missing' | 'error'`.
 - `deregister()` is called in `AgentWorker.handle_shutdown()` after the thread pool drains
 
 ---
@@ -160,6 +174,35 @@ verifying the user's Firebase ID token (never written directly by the worker).
 - `get/set_parent_message_guid()` / `get/set_child_message_guid()` — track agent lineage
 
 **Important**: Permissions are **consumed on use** (one-shot). External interface must re-grant for each invocation. This prevents accidental repeated execution of sensitive tools.
+
+---
+
+## ApiKeyService (`services/api_key_service.py`)
+
+**Responsibility**: Look up a user's own LLM API key (e.g. DeepSeek) so the worker can use it to run their agents.
+
+**MongoDB collection**: `MONGODB_API_KEYS_COLLECTION` env var (default: `apikeys`)
+
+**Document shape** (written by mongo-chat-ui's `/api/settings/api-key` route):
+```json
+{
+  "user_guid": "<Firebase UID>",
+  "provider": "deepseek",
+  "encrypted_key": "<base64(nonce || ciphertext || tag), AES-256-GCM>",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+```
+
+**Key methods**:
+- `get_api_key(user_guid, provider='deepseek') -> str | None` — finds the doc, decrypts `encrypted_key` via `utils/crypto.decrypt`, returns plaintext. Returns `None` if no doc exists, `user_guid` is falsy, or decryption fails (logged as a warning).
+
+**Encryption**: AES-256-GCM via `utils/crypto.py`, keyed by `ENCRYPTION_KEY` (base64, 32 bytes). This secret **must match** the `ENCRYPTION_KEY` used by mongo-chat-ui's `server/utils/crypto.js` — both encrypt/decrypt the same `encrypted_key` values.
+
+**Used in**: `agent-worker.py` `_process_document_thread` — `api_key = self.api_key_service.get_api_key(message.get('user_guid')) or self.api_key`. Two valid sources, either is sufficient:
+1. Platform key — stored encrypted via mongo-chat-ui Settings, works across all of the user's paired machines.
+2. Local machine key — `DEEPSEEK_API_KEY` in this machine's `.env` (`self.api_key`), only used on this machine.
+
+If **neither** is set, the agent is **not** run: `_reject_missing_api_key` appends an assistant message explaining both options and marks the conversation `complete`.
 
 ---
 

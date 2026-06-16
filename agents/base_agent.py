@@ -30,16 +30,20 @@ class BaseAgent(ABC):
     # @param child_resume_guid: GUID to resume for a child agent spawned via delegation.
     # @param available_tools: Optional list of tool name strings (e.g. from a DB-driven
     #        agent config) used by _initialize_tools() to build a dynamic tool registry.
+    # @param user_guid: Firebase UID of the conversation's owner, used by tools
+    #        that need to look up other conversations (e.g. askInstance).
     def __init__(self, user_request: str, plan_text: str, api_key: str,
                  parent_message_guid: Optional[str] = None,
                  parent_resume_guid: Optional[str] = None,
                  child_resume_guid: Optional[str] = None,
                  model_name: str = DEFAULT_MODEL,
-                 available_tools: Optional[List[str]] = None):
+                 available_tools: Optional[List[str]] = None,
+                 user_guid: Optional[str] = None):
         self.user_request = user_request
         self.plan_text = plan_text
         self.api_key = api_key
         self.model_name = model_name
+        self.user_guid = user_guid
         self.message_guid: Optional[str] = None
         self.parent_message_guid = parent_message_guid
         self.parent_resume_guid = parent_resume_guid

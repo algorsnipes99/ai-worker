@@ -13,9 +13,12 @@ from concurrent.futures import ThreadPoolExecutor
 from utils.machine_info import get_machine_id
 from services.machine_service import MachineService
 from services.redis_service import RedisService
+from services.api_key_service import ApiKeyService
+from services.message_service import MessageService
 
 import os
 import logging
+import requests
 import secrets
 import webbrowser
 from typing import Dict, Any, Type
@@ -37,6 +40,8 @@ class AgentWorker:
         self.api_key = os.getenv('DEEPSEEK_API_KEY')
         self.machine_id = get_machine_id()
         self.machine_service = MachineService()
+        self.api_key_service = ApiKeyService()
+        self.message_service = MessageService('')
 
         if not self.machine_service.is_paired():
             ui_url = os.getenv('UI_URL', 'http://localhost:3000').rstrip('/')
@@ -118,6 +123,8 @@ class AgentWorker:
             self._process_run_signal(guid, collection)
         elif event_type == 'compress_conversation':
             self._process_compress_signal(guid, collection)
+        elif event_type == 'check_api_key':
+            self._process_check_api_key_event()
         else:
             self.logger.warning(f"Unknown Redis event type: {event_type}")
 
@@ -148,12 +155,17 @@ class AgentWorker:
             'agent_class_name': doc.get('agent_class_name'),
             'model_name': doc.get('model_name', 'deepseek-v4-flash'),
             'available_tools': doc.get('available_tools', []),
+            'user_guid': doc.get('user_guid'),
             '_id': doc.get('_id', 'unknown')
         }
 
         collection.update_one({'_id': doc['_id']}, {'$unset': {'run_signal': ""}})
         self.executor.submit(self._process_document_thread, message)
         self.logger.info(f"Submitted message {message.get('_id')} to thread pool")
+
+    def _process_check_api_key_event(self):
+        self.executor.submit(self._check_api_key_thread)
+        self.logger.info("Submitted local DEEPSEEK_API_KEY check to thread pool")
 
     def _process_compress_signal(self, guid: str, collection):
         doc = collection.find_one({'guid': guid, 'compress_conversation': True})
@@ -207,15 +219,22 @@ class AgentWorker:
             agent_class = self._get_agent_class(agent_class_name)
             self.logger.info(f"Thread {thread_name} processing {message_id} with {agent_class.__name__}")
 
+            api_key = self.api_key_service.get_api_key(message.get('user_guid')) or self.api_key
+            if not api_key:
+                self.logger.info(f"Thread {thread_name} - no API key for user {message.get('user_guid')}, skipping {message_id}")
+                self._reject_missing_api_key(message)
+                return
+
             agent = agent_class(
                 user_request=message['user_request'],
                 plan_text=message.get('plan_text', ""),
-                api_key=self.api_key,
+                api_key=api_key,
                 parent_message_guid=message.get('parent_message_guid'),
                 parent_resume_guid=message.get('parent_resume_guid'),
                 child_resume_guid=message.get('child_resume_guid'),
                 model_name=message.get('model_name', 'deepseek-v4-flash'),
-                available_tools=message.get('available_tools', [])
+                available_tools=message.get('available_tools', []),
+                user_guid=message.get('user_guid')
             )
             result = agent.run(message['user_request'])
             self.logger.info(f"Thread {thread_name} - {agent_class.__name__} completed {message_id}: {result}")
@@ -223,6 +242,63 @@ class AgentWorker:
             self.logger.error(f"Thread {thread_name} - Error processing {message_id}: {str(e)}", exc_info=True)
         finally:
             self.logger.info(f"Thread {thread_name} finished processing {message_id}")
+
+    # Notify the user (via the conversation transcript) that they need to add a
+    # DeepSeek API key before this agent can run, and mark the run as complete
+    # so the UI stops showing it as pending.
+    # @param message: The message dict built by _process_run_signal.
+    def _reject_missing_api_key(self, message: Dict[str, Any]):
+        guid = message.get('parent_resume_guid')
+        agent_class_name = message.get('agent_class_name') or 'databaseagent'
+        if not guid:
+            return
+
+        messages = self.message_service.load_messages(guid, agent_class_name, message.get('parent_message_guid')) or []
+        messages.append({
+            'role': 'assistant',
+            'content': (
+                'No DeepSeek API key is configured for this agent. Add one in Settings, '
+                'or set the DEEPSEEK_API_KEY environment variable on this machine and restart '
+                'the agent worker — see the Help page in Settings for setup instructions.'
+            )
+        })
+        self.message_service.save_messages(messages, guid, agent_class_name, message.get('parent_message_guid'))
+        self.message_service.update_status(guid, 'complete')
+
+    # Re-check the local DEEPSEEK_API_KEY env var on this machine and verify it
+    # against the DeepSeek API with a minimal request, then report the result
+    # (status: 'missing' | 'valid' | 'invalid' | 'error') to the machines collection.
+    def _check_api_key_thread(self):
+        thread_name = threading.current_thread().name
+        api_key = os.getenv('DEEPSEEK_API_KEY')
+        if not api_key:
+            self.logger.info(f"Thread {thread_name} - DEEPSEEK_API_KEY not set on this machine")
+            self.machine_service.report_api_key_check('missing')
+            return
+
+        try:
+            response = requests.post(
+                "https://api.deepseek.com/v1/chat/completions",
+                json={
+                    "model": "deepseek-v4-flash",
+                    "messages": [{"role": "user", "content": "ping"}],
+                    "max_tokens": 1
+                },
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                timeout=15
+            )
+            if response.status_code == 200:
+                self.logger.info(f"Thread {thread_name} - local DEEPSEEK_API_KEY is valid")
+                self.machine_service.report_api_key_check('valid')
+            elif response.status_code in (401, 403):
+                self.logger.info(f"Thread {thread_name} - local DEEPSEEK_API_KEY rejected by DeepSeek ({response.status_code})")
+                self.machine_service.report_api_key_check('invalid', f'DeepSeek rejected the key (HTTP {response.status_code})')
+            else:
+                self.logger.warning(f"Thread {thread_name} - DeepSeek returned HTTP {response.status_code} while checking key")
+                self.machine_service.report_api_key_check('error', f'DeepSeek returned HTTP {response.status_code}')
+        except Exception as e:
+            self.logger.error(f"Thread {thread_name} - error checking local DEEPSEEK_API_KEY: {e}")
+            self.machine_service.report_api_key_check('error', str(e))
 
     def _process_compression_thread(self, guid: str, strategy: str):
         thread_name = threading.current_thread().name

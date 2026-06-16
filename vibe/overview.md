@@ -38,6 +38,7 @@ DeepSeek API  (LLM backend, model: deepseek-chat)
 | MessageService | `services/message_service.py` | Conversation history in MongoDB (includes machine_id/name) |
 | MachineService | `services/machine_service.py` | Machine pairing + online/offline registration in MongoDB |
 | StateService | `services/state_service.py` | Execution state snapshots for resumption |
+| ApiKeyService | `services/api_key_service.py` | Looks up per-user DeepSeek API keys (encrypted at rest) in MongoDB |
 | PermissionManager | `utils/permission_manager.py` | Tool-level permission gating via JSON file |
 | MachineInfo | `utils/machine_info.py` | Get machine ID (from OS/registry) and hostname |
 | Compressors | `conversation_compressor/` | Message history compression strategies |
@@ -76,7 +77,9 @@ All config via `.env` file. Key variables:
 MONGODB_URI, MONGODB_DB_NAME, MONGODB_COLLECTION_NAME, MONGODB_STATE_COLLECTION
 MONGODB_MACHINES_COLLECTION          (default: 'machines')
 MONGODB_PAIRING_TOKENS_COLLECTION    (default: 'pairingtokens')
-DEEPSEEK_API_KEY, DEEPSEEK_API_URL
+MONGODB_API_KEYS_COLLECTION          (default: 'apikeys')
+DEEPSEEK_API_KEY, DEEPSEEK_API_URL    — optional per-machine key, used as a fallback when the user has no platform key (ApiKeyService); reported to the machines collection as has_local_api_key
+ENCRYPTION_KEY                        — shared AES-256-GCM secret (base64, 32 bytes); must match mongo-chat-ui's ENCRYPTION_KEY
 CODE_REPOSITORY_RAG_PATH, CODEBASE_REPO_PATHS
 UI_URL                               (default: 'http://localhost:3000') — used for first-run pairing link
 ```

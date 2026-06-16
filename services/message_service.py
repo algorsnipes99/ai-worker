@@ -92,6 +92,20 @@ class MessageService:
 
         return doc.get('messages', []) if doc else None
 
+    # Load a conversation's messages for use by another conversation (e.g. the
+    # askInstance tool), enforcing that it belongs to the requesting user.
+    # @param guid: GUID of the conversation to load.
+    # @param user_guid: GUID of the user making the request.
+    # @returns: Dict with 'messages' and 'agent_class_name', or None if the
+    #   conversation doesn't exist or doesn't belong to user_guid.
+    def get_conversation_for_user(self, guid: str, user_guid: Optional[str]) -> Optional[Dict[str, Any]]:
+        if not guid or not user_guid:
+            return None
+        doc = self.collection.find_one({'guid': guid})
+        if not doc or doc.get('user_guid') != user_guid:
+            return None
+        return {'messages': doc.get('messages', []), 'agent_class_name': doc.get('agent_class_name')}
+
     # Set the 'status' field on the agent's document (e.g. 'active', 'complete', 'paused').
     # Creates the document if it does not exist.
     # @param guid: Execution GUID to update.

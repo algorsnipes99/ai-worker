@@ -37,11 +37,13 @@ REDIS_CHANNEL=ai-worker:events
 
 ```json
 {
-  "type": "run_signal" | "compress_conversation",
-  "guid": "<message_guid>",
+  "type": "run_signal" | "compress_conversation" | "check_api_key",
+  "guid": "<message_guid or machine_id>",
   "target_machine_id": "<machine_id or null>"
 }
 ```
+
+`check_api_key` is always sent with `target_machine_id` set (one event per online machine) and `guid` set to that machine's `machine_id` — it doesn't reference a conversation. On receipt, the worker re-checks `os.getenv('DEEPSEEK_API_KEY')` and, if set, makes a minimal DeepSeek request to validate it, then writes `has_local_api_key` and `api_key_check: {status, checked_at, error}` to its `machines` doc via `MachineService.report_api_key_check()`.
 
 ---
 
