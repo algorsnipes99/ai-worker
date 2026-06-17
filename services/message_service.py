@@ -18,6 +18,9 @@ class MessageService:
         self.uri = os.getenv('MONGODB_URI')
         self.db_name = os.getenv('MONGODB_DB_NAME', 'test')
         self.collection_name = os.getenv('MONGODB_COLLECTION_NAME', 'messages')
+        self._redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+        self._redis_channel = os.getenv('REDIS_CHANNEL', 'ai-worker:events')
+        self._redis_client = None
 
         try:
             self.client = MongoClient(self.uri)
@@ -58,6 +61,7 @@ class MessageService:
             upsert=True
         )
         print(result)
+        self._publish_update(guid)
         return result
 
     # Load messages for the given GUID using a three-tier fallback strategy:
@@ -126,6 +130,20 @@ class MessageService:
             {'$unset': {'pause_signal': ""}},
         )
         return result is not None
+
+    # Publish a message_updated event to Redis so the UI knows to fetch fresh data.
+    # Fire-and-forget — Redis being unavailable never blocks message persistence.
+    def _publish_update(self, guid: str) -> None:
+        try:
+            import redis as redis_lib
+            if self._redis_client is None:
+                self._redis_client = redis_lib.from_url(self._redis_url, decode_responses=True)
+            self._redis_client.publish(
+                self._redis_channel,
+                json.dumps({'type': 'message_updated', 'guid': guid})
+            )
+        except Exception as e:
+            print(f"[Redis] publish message_updated failed (non-fatal): {e}")
 
     # Return the current time as an ISO 8601 string.
     # @returns: Timestamp string.
